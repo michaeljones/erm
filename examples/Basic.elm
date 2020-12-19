@@ -2,7 +2,8 @@ module Basic exposing (..)
 
 import String
 
+import Regex
+import Bob
 
-a : Int
-a =
-    1
+main =
+    234 + 3 + 5 + 3 * 8
