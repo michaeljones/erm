@@ -1,6 +1,6 @@
 use super::parser::{Expr, Module, Stmt};
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum Error {
     NoMain,
     UnsupportedOperation,
@@ -8,6 +8,7 @@ pub enum Error {
 
 #[derive(Debug, PartialEq)]
 pub enum Value {
+    Bool(bool),
     Integer(i32),
     Float(f32),
     String(String),
@@ -37,6 +38,7 @@ pub fn evaluate(module: &Module) -> Result<Value, Error> {
 
 fn evaluate_expression<'a>(expr: &Expr<'a>) -> Result<Value, Error> {
     match expr {
+        Expr::Bool(bool) => Ok(Value::Bool(*bool)),
         Expr::Integer(int) => Ok(Value::Integer(*int)),
         Expr::Float(float) => Ok(Value::Float(*float)),
         Expr::String(string) => Ok(Value::String(string.to_string())),
@@ -45,6 +47,11 @@ fn evaluate_expression<'a>(expr: &Expr<'a>) -> Result<Value, Error> {
             left,
             right,
         } => evaluate_binary_expression(operator, left, right),
+        Expr::If {
+            condition,
+            then_branch,
+            else_branch,
+        } => evaluate_if_expression(condition, then_branch, else_branch),
     }
 }
 
@@ -64,6 +71,20 @@ fn evaluate_binary_expression<'a>(
         ("*", Value::Integer(l), Value::Integer(r)) => Ok(Value::Integer(l * r)),
         ("*", Value::Float(l), Value::Float(r)) => Ok(Value::Float(l * r)),
         ("++", Value::String(l), Value::String(r)) => Ok(Value::String(l + &r)),
+        _ => Err(Error::UnsupportedOperation),
+    }
+}
+
+fn evaluate_if_expression<'a>(
+    condition: &Expr<'a>,
+    then_branch: &Expr<'a>,
+    else_branch: &Expr<'a>,
+) -> Result<Value, Error> {
+    let condition_value = evaluate_expression(condition)?;
+
+    match condition_value {
+        Value::Bool(true) => evaluate_expression(then_branch),
+        Value::Bool(false) => evaluate_expression(else_branch),
         _ => Err(Error::UnsupportedOperation),
     }
 }

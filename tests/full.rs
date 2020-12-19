@@ -13,15 +13,15 @@ mod tests {
 
     #[derive(Debug, PartialEq)]
     enum Error {
-        ParserError,
-        EvaluateError,
+        ParserError(parser::Error),
+        EvaluateError(evaluate::Error),
     }
 
     fn eval(string: &str) -> Result<Value, Error> {
         let src = unindent(&string);
         let tokens = Token::lexer(&src);
-        let module = parser::parse(tokens).map_err(|_| Error::ParserError)?;
-        evaluate::evaluate(&module).map_err(|_| Error::EvaluateError)
+        let module = parser::parse(&mut tokens.peekable()).map_err(Error::ParserError)?;
+        evaluate::evaluate(&module).map_err(Error::EvaluateError)
     }
 
     #[test]
@@ -52,5 +52,18 @@ mod tests {
           "a" ++ "bc" ++ "def"
         "#;
         assert_eq!(eval(module), Ok(Value::String("abcdef".to_string())));
+    }
+
+    #[test]
+    fn if_statement() {
+        let module = r#"
+        module Main exposing (..)
+        main =
+          if True then
+            5
+          else
+            4
+        "#;
+        assert_eq!(eval(module), Ok(Value::Integer(5)));
     }
 }

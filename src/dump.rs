@@ -32,7 +32,7 @@ fn dump_file(filename: &str, _quiet: bool) -> Result<(), Error> {
 
     let result = Token::lexer(&contents);
 
-    let module = parser::parse(result).map_err(|err| {
+    let module = parser::parse(&mut result.peekable()).map_err(|err| {
         println!("{:?}", &err);
         Error::ParserError
     })?;

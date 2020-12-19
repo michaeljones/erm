@@ -1,5 +1,4 @@
 use lexer::Token;
-use logos::Lexer;
 
 #[derive(Debug)]
 pub struct Module<'a> {
@@ -20,6 +19,7 @@ pub enum Stmt<'a> {
 
 #[derive(Debug)]
 pub enum Expr<'a> {
+    Bool(bool),
     Integer(i32),
     Float(f32),
     String(&'a str),
@@ -28,16 +28,17 @@ pub enum Expr<'a> {
         left: Box<Expr<'a>>,
         right: Box<Expr<'a>>,
     },
+    If {
+        condition: Box<Expr<'a>>,
+        then_branch: Box<Expr<'a>>,
+        else_branch: Box<Expr<'a>>,
+    },
 }
 
-#[derive(Debug)]
-pub enum Error<'a> {
-    UnexpectedExpressionToken,
-    UnexpectedToken {
-        expected: Token<'a>,
-        found: Token<'a>,
-    },
-    ExpectedSpace(Token<'a>),
+#[derive(Debug, PartialEq)]
+pub enum Error {
+    UnexpectedToken { expected: String, found: String },
+    ExpectedSpace(String),
     UnexpectedEnd,
     Indent,
     TokensRemaining,
@@ -45,11 +46,12 @@ pub enum Error<'a> {
     NoOperator,
 }
 
-pub fn parse<'a>(tokens: Lexer<'a, Token<'a>>) -> Result<Module<'a>, Error> {
-    let mut iter = tokens.peekable();
+type TokenIter<'a> = std::iter::Peekable<logos::Lexer<'a, Token<'a>>>;
+
+pub fn parse<'a>(mut iter: &mut TokenIter<'a>) -> Result<Module<'a>, Error> {
     matches(&iter.next(), Token::Module)?;
     matches_space(&iter.next())?;
-    let name = extract_type_or_module_name(&iter.next())?;
+    let name = extract_upper_name(&iter.next())?;
     matches_space(&iter.next())?;
     matches(&iter.next(), Token::Exposing)?;
     matches_space(&iter.next())?;
@@ -76,8 +78,6 @@ pub fn parse<'a>(tokens: Lexer<'a, Token<'a>>) -> Result<Module<'a>, Error> {
     }
 }
 
-type TokenIter<'a> = std::iter::Peekable<logos::Lexer<'a, Token<'a>>>;
-
 fn consume_til_line_start<'a>(mut iter: &mut TokenIter<'a>) {
     while let Some(token) = iter.peek() {
         match token {
@@ -97,7 +97,7 @@ fn consume_spaces(iter: &mut TokenIter) {
 }
 
 // Imports
-fn parse_imports<'a>(mut iter: &mut TokenIter<'a>) -> Result<Vec<Import<'a>>, Error<'a>> {
+fn parse_imports<'a>(mut iter: &mut TokenIter<'a>) -> Result<Vec<Import<'a>>, Error> {
     let mut imports = vec![];
 
     loop {
@@ -107,7 +107,7 @@ fn parse_imports<'a>(mut iter: &mut TokenIter<'a>) -> Result<Vec<Import<'a>>, Er
 
         matches(&iter.next(), Token::Import)?;
         matches_space(&iter.next())?;
-        let module_name = extract_type_or_module_name(&iter.next())?;
+        let module_name = extract_upper_name(&iter.next())?;
 
         imports.push(Import { module_name });
 
@@ -130,7 +130,7 @@ impl Context {
         }
     }
 
-    pub fn consume_white_space<'a>(&mut self, iter: &mut TokenIter<'a>) -> Result<(), Error<'a>> {
+    pub fn consume_white_space<'a>(&mut self, iter: &mut TokenIter<'a>) -> Result<(), Error> {
         while let Some(ref token) = iter.peek() {
             match token {
                 Token::NewLine => {
@@ -153,14 +153,21 @@ impl Context {
 
         Ok(())
     }
+
+    pub fn child(&self) -> Context {
+        Context {
+            base_indent: self.base_indent,
+            current_indent: self.current_indent,
+        }
+    }
 }
 
 // Statements
-fn parse_statements<'a>(mut iter: &mut TokenIter<'a>) -> Result<Vec<Stmt<'a>>, Error<'a>> {
+fn parse_statements<'a>(mut iter: &mut TokenIter<'a>) -> Result<Vec<Stmt<'a>>, Error> {
     let mut statements = vec![];
 
     loop {
-        if !matches!(iter.peek(), Some(Token::VarName(_))) {
+        if !matches!(iter.peek(), Some(Token::LowerName(_))) {
             break;
         }
 
@@ -189,8 +196,8 @@ fn parse_statements<'a>(mut iter: &mut TokenIter<'a>) -> Result<Vec<Stmt<'a>>, E
 fn parse_expression<'a>(
     mut iter: &mut TokenIter<'a>,
     context: &mut Context,
-) -> Result<Expr<'a>, Error<'a>> {
-    let expr = parse_singular_expression(&mut iter)?;
+) -> Result<Expr<'a>, Error> {
+    let expr = parse_singular_expression(&mut iter, &mut context.child())?;
     context.consume_white_space(&mut iter)?;
 
     let mut operator_stack = Vec::new();
@@ -202,7 +209,7 @@ fn parse_expression<'a>(
 
         process_stacks(operator, &mut operator_stack, &mut operand_stack)?;
 
-        let right_hand_expr = parse_singular_expression(&mut iter)?;
+        let right_hand_expr = parse_singular_expression(&mut iter, &mut context.child())?;
         context.consume_white_space(&mut iter)?;
         operand_stack.push(right_hand_expr);
     }
@@ -227,7 +234,7 @@ fn process_stacks<'a>(
     operator: &'a str,
     mut operator_stack: &mut Vec<&'a str>,
     mut operand_stack: &mut Vec<Expr<'a>>,
-) -> Result<(), Error<'a>> {
+) -> Result<(), Error> {
     if has_greater_precendence(operator, &operator_stack) {
         operator_stack.push(operator);
     } else {
@@ -272,24 +279,73 @@ fn precendence<'a>(operator: &'a str) -> usize {
     }
 }
 
-fn parse_singular_expression<'a>(iter: &mut TokenIter<'a>) -> Result<Expr<'a>, Error<'a>> {
-    match iter.next() {
-        Some(Token::LiteralInteger(int)) => Ok(Expr::Integer(int)),
-        Some(Token::LiteralFloat(float)) => Ok(Expr::Float(float)),
-        Some(Token::LiteralString(string)) => Ok(Expr::String(string)),
-        _ => Err(Error::UnexpectedExpressionToken),
+fn parse_singular_expression<'a>(
+    mut iter: &mut TokenIter<'a>,
+    context: &mut Context,
+) -> Result<Expr<'a>, Error> {
+    match iter.peek() {
+        Some(Token::If) => parse_if_expression(&mut iter, &mut context.child()),
+        Some(Token::LiteralInteger(int)) => {
+            let result = Ok(Expr::Integer(*int));
+            iter.next();
+            result
+        }
+        Some(Token::LiteralFloat(float)) => {
+            let result = Ok(Expr::Float(*float));
+            iter.next();
+            result
+        }
+        Some(Token::LiteralString(string)) => {
+            let result = Ok(Expr::String(string));
+            iter.next();
+            result
+        }
+        Some(Token::UpperName("True")) => {
+            let result = Ok(Expr::Bool(true));
+            iter.next();
+            result
+        }
+        Some(Token::UpperName("False")) => {
+            let result = Ok(Expr::Bool(false));
+            iter.next();
+            result
+        }
+        Some(token) => Err(Error::UnexpectedToken {
+            found: token.to_string(),
+            expected: "Expression token".to_string(),
+        }),
+        None => Err(Error::UnexpectedEnd),
     }
 }
 
-fn matches<'a>(stream_token: &Option<Token<'a>>, match_token: Token<'a>) -> Result<(), Error<'a>> {
+fn parse_if_expression<'a>(
+    mut iter: &mut TokenIter<'a>,
+    context: &mut Context,
+) -> Result<Expr<'a>, Error> {
+    matches(&iter.next(), Token::If)?;
+    matches_space(&iter.next())?;
+    let condition = parse_expression(&mut iter, &mut context.child())?;
+    matches(&iter.next(), Token::Then)?;
+    let then_branch = parse_expression(&mut iter, &mut context.child())?;
+    matches(&iter.next(), Token::Else)?;
+    let else_branch = parse_expression(&mut iter, &mut context.child())?;
+
+    Ok(Expr::If {
+        condition: Box::new(condition),
+        then_branch: Box::new(then_branch),
+        else_branch: Box::new(else_branch),
+    })
+}
+
+fn matches<'a>(stream_token: &Option<Token<'a>>, match_token: Token<'a>) -> Result<(), Error> {
     match stream_token {
         Some(token) => {
             if token == &match_token {
                 Ok(())
             } else {
                 Err(Error::UnexpectedToken {
-                    found: token.clone(),
-                    expected: match_token.clone(),
+                    found: token.to_string(),
+                    expected: match_token.to_string(),
                 })
             }
         }
@@ -297,42 +353,42 @@ fn matches<'a>(stream_token: &Option<Token<'a>>, match_token: Token<'a>) -> Resu
     }
 }
 
-fn matches_space<'a>(stream_token: &Option<Token<'a>>) -> Result<(), Error<'a>> {
+fn matches_space<'a>(stream_token: &Option<Token<'a>>) -> Result<(), Error> {
     match stream_token {
         Some(Token::Space(_)) => Ok(()),
-        Some(token) => Err(Error::ExpectedSpace(token.clone())),
+        Some(token) => Err(Error::ExpectedSpace(token.to_string())),
         None => Err(Error::UnexpectedEnd),
     }
 }
 
-fn extract_type_or_module_name<'a>(stream_token: &Option<Token<'a>>) -> Result<&'a str, Error<'a>> {
+fn extract_upper_name<'a>(stream_token: &Option<Token<'a>>) -> Result<&'a str, Error> {
     match stream_token {
-        Some(Token::TypeOrModuleName(name)) => Ok(name),
+        Some(Token::UpperName(name)) => Ok(name),
         Some(token) => Err(Error::UnexpectedToken {
-            found: token.clone(),
-            expected: Token::TypeOrModuleName(""),
+            found: token.to_string(),
+            expected: Token::UpperName("").to_string(),
         }),
         None => Err(Error::UnexpectedEnd),
     }
 }
 
-fn extract_var_name<'a>(stream_token: &Option<Token<'a>>) -> Result<&'a str, Error<'a>> {
+fn extract_var_name<'a>(stream_token: &Option<Token<'a>>) -> Result<&'a str, Error> {
     match stream_token {
-        Some(Token::VarName(name)) => Ok(name),
+        Some(Token::LowerName(name)) => Ok(name),
         Some(token) => Err(Error::UnexpectedToken {
-            found: token.clone(),
-            expected: Token::VarName(""),
+            found: token.to_string(),
+            expected: Token::LowerName("").to_string(),
         }),
         None => Err(Error::UnexpectedEnd),
     }
 }
 
-fn extract_operator<'a>(stream_token: &Option<Token<'a>>) -> Result<&'a str, Error<'a>> {
+fn extract_operator<'a>(stream_token: &Option<Token<'a>>) -> Result<&'a str, Error> {
     match stream_token {
         Some(Token::Operator(op)) => Ok(op),
         Some(token) => Err(Error::UnexpectedToken {
-            found: token.clone(),
-            expected: Token::Operator(""),
+            found: token.to_string(),
+            expected: Token::Operator("").to_string(),
         }),
         None => Err(Error::UnexpectedEnd),
     }

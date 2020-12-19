@@ -27,10 +27,10 @@ pub enum Token<'a> {
     In,
     #[token("if")]
     If,
-    #[token("else")]
-    Else,
     #[token("then")]
     Then,
+    #[token("else")]
+    Else,
 
     // Open & Close
     #[token("(")]
@@ -82,10 +82,10 @@ pub enum Token<'a> {
 
     // Names
     #[regex("[A-Z][a-zA-Z0-9]*")]
-    TypeOrModuleName(&'a str),
+    UpperName(&'a str),
 
     #[regex("[a-z_][a-zA-Z0-9]*")]
-    VarName(&'a str),
+    LowerName(&'a str),
 
     #[regex(r#"[+><!*-:|]+"#)]
     Operator(&'a str),
@@ -119,4 +119,10 @@ pub enum Token<'a> {
 fn string_contents<'a>(lex: &mut Lexer<'a, Token<'a>>) -> Option<&'a str> {
     let slice = lex.slice();
     Some(&slice[1..slice.len() - 1])
+}
+
+impl<'a> std::fmt::Display for Token<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self)
+    }
 }
