@@ -1,4 +1,4 @@
-use parser::{Expr, Module, Stmt};
+use super::parser::{Expr, Module, Stmt};
 
 #[derive(Debug)]
 pub enum Error {
@@ -6,14 +6,14 @@ pub enum Error {
     UnsupportedOperation,
 }
 
-#[derive(Debug)]
-enum Value {
+#[derive(Debug, PartialEq)]
+pub enum Value {
     Integer(i32),
     Float(f32),
     String(String),
 }
 
-pub fn evaluate(module: &Module) -> Result<(), Error> {
+pub fn evaluate(module: &Module) -> Result<Value, Error> {
     let main_expr = module
         .statements
         .iter()
@@ -30,9 +30,9 @@ pub fn evaluate(module: &Module) -> Result<(), Error> {
 
     let value = evaluate_expression(&main_expr);
 
-    println!("{:?}", value);
+    println!("{:?}", &value);
 
-    Ok(())
+    value
 }
 
 fn evaluate_expression<'a>(expr: &Expr<'a>) -> Result<Value, Error> {

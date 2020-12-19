@@ -1,3 +1,5 @@
 extern crate logos;
 
-mod lexer;
+pub mod evaluate;
+pub mod lexer;
+pub mod parser;
