@@ -43,4 +43,14 @@ mod tests {
         ";
         assert_eq!(eval(module), Ok(Value::Integer(-109)));
     }
+
+    #[test]
+    fn string_concatenation() {
+        let module = r#"
+        module Main exposing (..)
+        main =
+          "a" ++ "bc" ++ "def"
+        "#;
+        assert_eq!(eval(module), Ok(Value::String("abcdef".to_string())));
+    }
 }
