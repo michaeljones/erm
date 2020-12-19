@@ -33,4 +33,14 @@ mod tests {
         ";
         assert_eq!(eval(module), Ok(Value::Integer(4)));
     }
+
+    #[test]
+    fn arithmetic_precendence() {
+        let module = "
+        module Main exposing (..)
+        main =
+          10 - 11 * 12 + 13
+        ";
+        assert_eq!(eval(module), Ok(Value::Integer(-109)));
+    }
 }
