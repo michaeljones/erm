@@ -6,4 +6,4 @@ import Regex
 import Bob
 
 main =
-    234 + 3 + 5 + 3 * 8
+    "hello" ++ " " ++ "world"

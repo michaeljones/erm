@@ -102,8 +102,8 @@ pub enum Token<'a> {
     #[regex("-?[0-9]+", |lex| lex.slice().parse::<i32>(), priority = 2)]
     LiteralInteger(i32),
 
-    #[regex("[0-9]*\\.[0-9]+([eE][+-]?[0-9]+)?|[0-9]+[eE][+-]?[0-9]+")]
-    LiteralFloat,
+    #[regex("[0-9]*\\.[0-9]+([eE][+-]?[0-9]+)?|[0-9]+[eE][+-]?[0-9]+", |lex| lex.slice().parse::<f32>())]
+    LiteralFloat(f32),
 
     #[regex(r#""([^"])*""#, string_contents)]
     LiteralString(&'a str),

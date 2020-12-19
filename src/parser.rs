@@ -21,6 +21,8 @@ pub enum Stmt<'a> {
 #[derive(Debug)]
 pub enum Expr<'a> {
     Integer(i32),
+    Float(f32),
+    String(&'a str),
     BinOp {
         operator: &'a str,
         left: Box<Expr<'a>>,
@@ -198,7 +200,7 @@ fn parse_expression<'a>(
         let operator = extract_operator(&iter.next())?;
         context.consume_white_space(&mut iter)?;
 
-        manip_stacks(operator, &mut operator_stack, &mut operand_stack)?;
+        process_stacks(operator, &mut operator_stack, &mut operand_stack)?;
 
         let right_hand_expr = parse_singular_expression(&mut iter)?;
         context.consume_white_space(&mut iter)?;
@@ -221,7 +223,7 @@ fn parse_expression<'a>(
     operand_stack.pop().ok_or(Error::NoOperand)
 }
 
-fn manip_stacks<'a>(
+fn process_stacks<'a>(
     operator: &'a str,
     mut operator_stack: &mut Vec<&'a str>,
     mut operand_stack: &mut Vec<Expr<'a>>,
@@ -239,7 +241,7 @@ fn manip_stacks<'a>(
             right: Box::new(right_hand_expr),
         });
 
-        manip_stacks(operator, &mut operator_stack, &mut operand_stack)?;
+        process_stacks(operator, &mut operator_stack, &mut operand_stack)?;
     };
 
     Ok(())
@@ -256,10 +258,16 @@ fn has_greater_precendence<'a>(operator_a: &'a str, operator_stack: &Vec<&'a str
     }
 }
 
+// Based on:
+//
+//   - http://faq.elm-community.org/operators.html
+//   - https://github.com/elm-lang/core/blob/master/src/Basics.elm#L72-L90
+//
 fn precendence<'a>(operator: &'a str) -> usize {
     match operator {
         "*" | "/" => 7,
         "+" | "-" => 6,
+        "++" | "::" => 5,
         _ => 0,
     }
 }
@@ -267,6 +275,8 @@ fn precendence<'a>(operator: &'a str) -> usize {
 fn parse_singular_expression<'a>(iter: &mut TokenIter<'a>) -> Result<Expr<'a>, Error<'a>> {
     match iter.next() {
         Some(Token::LiteralInteger(int)) => Ok(Expr::Integer(int)),
+        Some(Token::LiteralFloat(float)) => Ok(Expr::Float(float)),
+        Some(Token::LiteralString(string)) => Ok(Expr::String(string)),
         _ => Err(Error::UnexpectedExpressionToken),
     }
 }
