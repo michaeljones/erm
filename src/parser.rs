@@ -1,4 +1,4 @@
-use lexer::Token;
+use lexer::{Range, SrcToken, Token};
 
 #[derive(Debug)]
 pub struct Module<'a> {
@@ -37,16 +37,21 @@ pub enum Expr<'a> {
 
 #[derive(Debug, PartialEq)]
 pub enum Error {
-    UnexpectedToken { expected: String, found: String },
-    ExpectedSpace(String),
+    UnexpectedToken {
+        expected: String,
+        found: String,
+        range: Range,
+    },
     UnexpectedEnd,
-    Indent,
+    Indent {
+        range: Range,
+    },
     TokensRemaining,
     NoOperand,
     NoOperator,
 }
 
-type TokenIter<'a> = std::iter::Peekable<logos::Lexer<'a, Token<'a>>>;
+type TokenIter<'a> = std::iter::Peekable<logos::SpannedIter<'a, Token<'a>>>;
 
 pub fn parse<'a>(mut iter: &mut TokenIter<'a>) -> Result<Module<'a>, Error> {
     matches(&iter.next(), Token::Module)?;
@@ -79,7 +84,7 @@ pub fn parse<'a>(mut iter: &mut TokenIter<'a>) -> Result<Module<'a>, Error> {
 }
 
 fn consume_til_line_start<'a>(mut iter: &mut TokenIter<'a>) {
-    while let Some(token) = iter.peek() {
+    while let Some((token, _range)) = iter.peek() {
         match token {
             Token::NewLine => {
                 iter.next();
@@ -91,7 +96,7 @@ fn consume_til_line_start<'a>(mut iter: &mut TokenIter<'a>) {
 }
 
 fn consume_spaces(iter: &mut TokenIter) {
-    while matches!(iter.peek(), Some(Token::Space(_))) {
+    while matches!(iter.peek(), Some((Token::Space(_), _range))) {
         iter.next();
     }
 }
@@ -101,7 +106,7 @@ fn parse_imports<'a>(mut iter: &mut TokenIter<'a>) -> Result<Vec<Import<'a>>, Er
     let mut imports = vec![];
 
     loop {
-        if !matches!(iter.peek(), Some(Token::Import)) {
+        if !matches!(iter.peek(), Some((Token::Import, _range))) {
             break;
         }
 
@@ -117,49 +122,156 @@ fn parse_imports<'a>(mut iter: &mut TokenIter<'a>) -> Result<Vec<Import<'a>>, Er
     Ok(imports)
 }
 
-struct Context {
-    base_indent: usize,
-    current_indent: usize,
+#[derive(Clone)]
+enum IndentStatus {
+    Inherited(usize),
+    Fresh(usize),
 }
 
-impl Context {
-    pub fn new() -> Context {
-        Context {
-            base_indent: 0,
-            current_indent: 0,
+impl IndentStatus {
+    fn add(&mut self, count: usize) -> Self {
+        // Only add spaces if we've seen a new line
+        match self {
+            IndentStatus::Fresh(curr) => IndentStatus::Fresh(*curr + count),
+            _ => self.clone(),
         }
     }
 
-    pub fn consume_white_space<'a>(&mut self, iter: &mut TokenIter<'a>) -> Result<(), Error> {
-        while let Some(ref token) = iter.peek() {
-            match token {
-                Token::NewLine => {
-                    iter.next();
-                    self.current_indent = 0
-                }
-                Token::Space(ref count) => {
-                    self.current_indent += count;
-                    iter.next();
-                }
-                _ => {
-                    if self.current_indent > self.base_indent {
-                        return Ok(());
-                    } else {
-                        return Err(Error::Indent);
-                    }
-                }
+    fn indented_from(&self, base: usize) -> bool {
+        match self {
+            IndentStatus::Inherited(_) => true,
+            IndentStatus::Fresh(curr) => curr > &base,
+        }
+    }
+
+    fn matching(&self, base: usize) -> bool {
+        match self {
+            IndentStatus::Inherited(_) => true,
+            IndentStatus::Fresh(curr) => curr == &base,
+        }
+    }
+
+    fn extract(&self) -> usize {
+        match self {
+            IndentStatus::Fresh(curr) => *curr,
+            IndentStatus::Inherited(curr) => *curr,
+        }
+    }
+}
+
+#[derive(Clone)]
+enum IndentScope {
+    In(usize),
+    Out(usize),
+}
+
+impl IndentScope {
+    fn in_scope(&self) -> bool {
+        match self {
+            IndentScope::In(_) => true,
+            IndentScope::Out(_) => false,
+        }
+    }
+    fn extract(&self) -> usize {
+        match self {
+            IndentScope::In(curr) => *curr,
+            IndentScope::Out(curr) => *curr,
+        }
+    }
+}
+
+fn consume_to_indented<'b>(
+    iter: &mut TokenIter<'b>,
+    base: usize,
+    start: usize,
+) -> Result<IndentScope, Error> {
+    let mut current = IndentStatus::Inherited(start);
+
+    while let Some((ref token, _range)) = iter.peek() {
+        match token {
+            Token::NewLine => {
+                current = IndentStatus::Fresh(0);
+                iter.next();
+            }
+            Token::Space(count) => {
+                current = current.add(*count);
+                iter.next();
+            }
+            _ => {
+                return if current.indented_from(base) {
+                    Ok(IndentScope::In(current.extract()))
+                } else {
+                    Ok(IndentScope::Out(current.extract()))
+                };
             }
         }
-
-        Ok(())
     }
 
-    pub fn child(&self) -> Context {
-        Context {
-            base_indent: self.base_indent,
-            current_indent: self.current_indent,
+    Ok(IndentScope::In(0))
+}
+
+fn must_consume_to_indented<'b>(
+    iter: &mut TokenIter<'b>,
+    base: usize,
+    start: usize,
+) -> Result<usize, Error> {
+    let mut current = IndentStatus::Inherited(start);
+
+    while let Some((ref token, range)) = iter.peek() {
+        match token {
+            Token::NewLine => {
+                current = IndentStatus::Fresh(0);
+                iter.next();
+            }
+            Token::Space(count) => {
+                current = current.add(*count);
+                iter.next();
+            }
+            _ => {
+                return if current.indented_from(base) {
+                    Ok(current.extract())
+                } else {
+                    Err(Error::Indent {
+                        range: range.clone(),
+                    })
+                };
+            }
         }
     }
+
+    Ok(0)
+}
+
+fn consume_to_matching<'b>(
+    iter: &mut TokenIter<'b>,
+    base: usize,
+    start: usize,
+) -> Result<usize, Error> {
+    let mut current = IndentStatus::Inherited(start);
+
+    while let Some((ref token, range)) = iter.peek() {
+        match token {
+            Token::NewLine => {
+                current = IndentStatus::Fresh(0);
+                iter.next();
+            }
+            Token::Space(count) => {
+                current = current.add(*count);
+                iter.next();
+            }
+            _ => {
+                return if current.matching(base) {
+                    Ok(current.extract())
+                } else {
+                    Err(Error::Indent {
+                        range: range.clone(),
+                    })
+                };
+            }
+        }
+    }
+
+    Ok(0)
 }
 
 // Statements
@@ -167,20 +279,25 @@ fn parse_statements<'a>(mut iter: &mut TokenIter<'a>) -> Result<Vec<Stmt<'a>>, E
     let mut statements = vec![];
 
     loop {
-        if !matches!(iter.peek(), Some(Token::LowerName(_))) {
+        if !matches!(iter.peek(), Some((Token::LowerName(_), _range))) {
             break;
         }
 
         let name = extract_var_name(&iter.next())?;
         matches_space(&iter.next())?;
         matches(&iter.next(), Token::Equals)?;
-        let mut context = Context::new();
-        context.consume_white_space(&mut iter)?;
 
-        let expr = parse_expression(&mut iter, &mut context)?;
+        let base = 0;
+        let mut current = 0;
+
+        let indent = consume_to_indented(&mut iter, base, current)?;
+        current = indent.extract();
+
+        let (expr, _current) = parse_expression(&mut iter, current, current)?;
 
         statements.push(Stmt::Function { name, expr });
 
+        // TODO: Update/fix/change
         consume_til_line_start(&mut iter);
     }
 
@@ -193,24 +310,36 @@ fn parse_statements<'a>(mut iter: &mut TokenIter<'a>) -> Result<Vec<Stmt<'a>>, E
 //   - https://eli.thegreenplace.net/2009/03/20/a-recursive-descent-parser-with-an-infix-expression-evaluator
 //   - http://www.engr.mun.ca/~theo/Misc/exp_parsing.htm
 //
-fn parse_expression<'a>(
+fn parse_expression<'a, 'b>(
     mut iter: &mut TokenIter<'a>,
-    context: &mut Context,
-) -> Result<Expr<'a>, Error> {
-    let expr = parse_singular_expression(&mut iter, &mut context.child())?;
-    context.consume_white_space(&mut iter)?;
+    base: usize,
+    current: usize,
+) -> Result<(Expr<'a>, usize), Error> {
+    let (expr, mut current) = parse_singular_expression(&mut iter, base, current)?;
+
+    // We have to keep parsing to look for more parts to this expression but if we find a change in
+    // indentation that indicates the end of the scope for this expression then we just want to
+    // return the expression we've found so far and allow the level up to deal with the change in
+    // scope.
+    let indent = consume_to_indented(&mut iter, base, current)?;
+    if indent.in_scope() {
+        current = indent.extract();
+    } else {
+        return Ok((expr, indent.extract()));
+    }
 
     let mut operator_stack = Vec::new();
     let mut operand_stack = vec![expr];
 
-    while matches!(iter.peek(), Some(Token::Operator(_))) {
+    while matches!(iter.peek(), Some((Token::Operator(_), _range))) {
         let operator = extract_operator(&iter.next())?;
-        context.consume_white_space(&mut iter)?;
+        current = must_consume_to_indented(&mut iter, base, current)?;
 
         process_stacks(operator, &mut operator_stack, &mut operand_stack)?;
 
-        let right_hand_expr = parse_singular_expression(&mut iter, &mut context.child())?;
-        context.consume_white_space(&mut iter)?;
+        let (right_hand_expr, curr) = parse_singular_expression(&mut iter, base, current)?;
+        current = curr;
+        current = must_consume_to_indented(&mut iter, base, current)?;
         operand_stack.push(right_hand_expr);
     }
 
@@ -227,7 +356,10 @@ fn parse_expression<'a>(
     }
 
     assert!(operand_stack.len() == 1);
-    operand_stack.pop().ok_or(Error::NoOperand)
+    operand_stack
+        .pop()
+        .map(|expr| (expr, current))
+        .ok_or(Error::NoOperand)
 }
 
 fn process_stacks<'a>(
@@ -279,73 +411,90 @@ fn precendence<'a>(operator: &'a str) -> usize {
     }
 }
 
-fn parse_singular_expression<'a>(
+fn parse_singular_expression<'a, 'b>(
     mut iter: &mut TokenIter<'a>,
-    context: &mut Context,
-) -> Result<Expr<'a>, Error> {
+    base: usize,
+    current: usize,
+) -> Result<(Expr<'a>, usize), Error> {
     match iter.peek() {
-        Some(Token::If) => parse_if_expression(&mut iter, &mut context.child()),
-        Some(Token::LiteralInteger(int)) => {
-            let result = Ok(Expr::Integer(*int));
+        Some((Token::If, _range)) => parse_if_expression(&mut iter, base, current),
+        Some((Token::LiteralInteger(int), _range)) => {
+            let result = Ok((Expr::Integer(*int), current));
             iter.next();
             result
         }
-        Some(Token::LiteralFloat(float)) => {
-            let result = Ok(Expr::Float(*float));
+        Some((Token::LiteralFloat(float), _range)) => {
+            let result = Ok((Expr::Float(*float), current));
             iter.next();
             result
         }
-        Some(Token::LiteralString(string)) => {
-            let result = Ok(Expr::String(string));
+        Some((Token::LiteralString(string), _range)) => {
+            let result = Ok((Expr::String(string), current));
             iter.next();
             result
         }
-        Some(Token::UpperName("True")) => {
-            let result = Ok(Expr::Bool(true));
+        Some((Token::UpperName("True"), _range)) => {
+            let result = Ok((Expr::Bool(true), current));
             iter.next();
             result
         }
-        Some(Token::UpperName("False")) => {
-            let result = Ok(Expr::Bool(false));
+        Some((Token::UpperName("False"), _range)) => {
+            let result = Ok((Expr::Bool(false), current));
             iter.next();
             result
         }
-        Some(token) => Err(Error::UnexpectedToken {
+        Some((token, range)) => Err(Error::UnexpectedToken {
             found: token.to_string(),
             expected: "Expression token".to_string(),
+            range: range.clone(),
         }),
         None => Err(Error::UnexpectedEnd),
     }
 }
 
-fn parse_if_expression<'a>(
+fn parse_if_expression<'a, 'b>(
     mut iter: &mut TokenIter<'a>,
-    context: &mut Context,
-) -> Result<Expr<'a>, Error> {
+    base: usize,
+    mut current: usize,
+) -> Result<(Expr<'a>, usize), Error> {
     matches(&iter.next(), Token::If)?;
-    matches_space(&iter.next())?;
-    let condition = parse_expression(&mut iter, &mut context.child())?;
-    matches(&iter.next(), Token::Then)?;
-    let then_branch = parse_expression(&mut iter, &mut context.child())?;
-    matches(&iter.next(), Token::Else)?;
-    let else_branch = parse_expression(&mut iter, &mut context.child())?;
+    current = must_consume_to_indented(&mut iter, base, current)?;
+    let (condition, curr) = parse_expression(&mut iter, current, current)?;
+    current = curr;
 
-    Ok(Expr::If {
-        condition: Box::new(condition),
-        then_branch: Box::new(then_branch),
-        else_branch: Box::new(else_branch),
-    })
+    current = consume_to_matching(&mut iter, base, current)?;
+    matches(&iter.next(), Token::Then)?;
+
+    current = must_consume_to_indented(&mut iter, base, current)?;
+    let (then_branch, curr) = parse_expression(&mut iter, current, current)?;
+    current = curr;
+
+    current = consume_to_matching(&mut iter, base, current)?;
+    matches(&iter.next(), Token::Else)?;
+
+    current = must_consume_to_indented(&mut iter, base, current)?;
+    let (else_branch, current) = parse_expression(&mut iter, current, current)?;
+
+    Ok((
+        Expr::If {
+            condition: Box::new(condition),
+            then_branch: Box::new(then_branch),
+            else_branch: Box::new(else_branch),
+        },
+        current,
+    ))
 }
 
-fn matches<'a>(stream_token: &Option<Token<'a>>, match_token: Token<'a>) -> Result<(), Error> {
+fn matches<'a>(stream_token: &Option<SrcToken<'a>>, match_token: Token<'a>) -> Result<(), Error> {
     match stream_token {
-        Some(token) => {
+        Some((token, range)) => {
             if token == &match_token {
                 Ok(())
             } else {
                 Err(Error::UnexpectedToken {
                     found: token.to_string(),
                     expected: match_token.to_string(),
+                    range: range.clone(),
                 })
             }
         }
@@ -353,42 +502,49 @@ fn matches<'a>(stream_token: &Option<Token<'a>>, match_token: Token<'a>) -> Resu
     }
 }
 
-fn matches_space<'a>(stream_token: &Option<Token<'a>>) -> Result<(), Error> {
+fn matches_space<'a>(stream_token: &Option<SrcToken<'a>>) -> Result<(), Error> {
     match stream_token {
-        Some(Token::Space(_)) => Ok(()),
-        Some(token) => Err(Error::ExpectedSpace(token.to_string())),
+        Some((Token::Space(_), _range)) => Ok(()),
+        Some((token, range)) => Err(Error::UnexpectedToken {
+            found: token.to_string(),
+            expected: "Space".to_string(),
+            range: range.clone(),
+        }),
         None => Err(Error::UnexpectedEnd),
     }
 }
 
-fn extract_upper_name<'a>(stream_token: &Option<Token<'a>>) -> Result<&'a str, Error> {
+fn extract_upper_name<'a>(stream_token: &Option<SrcToken<'a>>) -> Result<&'a str, Error> {
     match stream_token {
-        Some(Token::UpperName(name)) => Ok(name),
-        Some(token) => Err(Error::UnexpectedToken {
+        Some((Token::UpperName(name), _range)) => Ok(name),
+        Some((token, range)) => Err(Error::UnexpectedToken {
             found: token.to_string(),
             expected: Token::UpperName("").to_string(),
+            range: range.clone(),
         }),
         None => Err(Error::UnexpectedEnd),
     }
 }
 
-fn extract_var_name<'a>(stream_token: &Option<Token<'a>>) -> Result<&'a str, Error> {
+fn extract_var_name<'a>(stream_token: &Option<SrcToken<'a>>) -> Result<&'a str, Error> {
     match stream_token {
-        Some(Token::LowerName(name)) => Ok(name),
-        Some(token) => Err(Error::UnexpectedToken {
+        Some((Token::LowerName(name), _range)) => Ok(name),
+        Some((token, range)) => Err(Error::UnexpectedToken {
             found: token.to_string(),
             expected: Token::LowerName("").to_string(),
+            range: range.clone(),
         }),
         None => Err(Error::UnexpectedEnd),
     }
 }
 
-fn extract_operator<'a>(stream_token: &Option<Token<'a>>) -> Result<&'a str, Error> {
+fn extract_operator<'a>(stream_token: &Option<SrcToken<'a>>) -> Result<&'a str, Error> {
     match stream_token {
-        Some(Token::Operator(op)) => Ok(op),
-        Some(token) => Err(Error::UnexpectedToken {
+        Some((Token::Operator(op), _range)) => Ok(op),
+        Some((token, range)) => Err(Error::UnexpectedToken {
             found: token.to_string(),
             expected: Token::Operator("").to_string(),
+            range: range.clone(),
         }),
         None => Err(Error::UnexpectedEnd),
     }

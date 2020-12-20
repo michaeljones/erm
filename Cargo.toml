@@ -19,6 +19,7 @@ clap = "2.33.3"
 
 [dev-dependencies]
 unindent = "0.1.7"
+codespan-reporting = "0.11.0"
 
 [profile.dev]
 opt-level = 0

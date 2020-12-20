@@ -1,5 +1,10 @@
 use logos::{Lexer, Logos};
 
+pub type Range = std::ops::Range<usize>;
+
+#[allow(dead_code)]
+pub type SrcToken<'a> = (Token<'a>, Range);
+
 #[derive(Logos, Debug, PartialEq, Clone)]
 pub enum Token<'a> {
     // Keywords

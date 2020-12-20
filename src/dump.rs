@@ -31,8 +31,9 @@ fn dump_file(filename: &str, _quiet: bool) -> Result<(), Error> {
         .expect("something went wrong reading the file");
 
     let result = Token::lexer(&contents);
+    let mut iter = result.spanned().peekable();
 
-    let module = parser::parse(&mut result.peekable()).map_err(|err| {
+    let module = parser::parse(&mut iter).map_err(|err| {
         println!("{:?}", &err);
         Error::ParserError
     })?;
