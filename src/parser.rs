@@ -14,7 +14,20 @@ pub struct Import<'a> {
 
 #[derive(Debug)]
 pub enum Stmt<'a> {
-    Function { name: &'a str, expr: Expr<'a> },
+    Binding {
+        name: &'a str,
+        expr: Expr<'a>,
+    },
+    Function {
+        name: &'a str,
+        args: Vec<Pattern<'a>>,
+        expr: Expr<'a>,
+    },
+}
+
+#[derive(Debug)]
+pub enum Pattern<'a> {
+    Name(&'a str),
 }
 
 #[derive(Debug)]
@@ -23,6 +36,7 @@ pub enum Expr<'a> {
     Integer(i32),
     Float(f32),
     String(&'a str),
+    List(Vec<Expr<'a>>),
     BinOp {
         operator: &'a str,
         left: Box<Expr<'a>>,
@@ -33,6 +47,11 @@ pub enum Expr<'a> {
         then_branch: Box<Expr<'a>>,
         else_branch: Box<Expr<'a>>,
     },
+    Call {
+        function: &'a str,
+        args: Vec<Expr<'a>>,
+    },
+    VarName(&'a str),
 }
 
 #[derive(Debug, PartialEq)]
@@ -284,7 +303,20 @@ fn parse_statements<'a>(mut iter: &mut TokenIter<'a>) -> Result<Vec<Stmt<'a>>, E
         }
 
         let name = extract_var_name(&iter.next())?;
-        matches_space(&iter.next())?;
+        consume_spaces(&mut iter);
+
+        let mut args = Vec::new();
+        loop {
+            if !matches!(iter.peek(), Some((Token::LowerName(_), _range))) {
+                break;
+            }
+
+            let arg = extract_pattern_name(&iter.next())?;
+            args.push(arg);
+
+            consume_spaces(&mut iter);
+        }
+
         matches(&iter.next(), Token::Equals)?;
 
         let base = 0;
@@ -295,7 +327,11 @@ fn parse_statements<'a>(mut iter: &mut TokenIter<'a>) -> Result<Vec<Stmt<'a>>, E
 
         let (expr, _current) = parse_expression(&mut iter, current, current)?;
 
-        statements.push(Stmt::Function { name, expr });
+        if args.is_empty() {
+            statements.push(Stmt::Binding { name, expr });
+        } else {
+            statements.push(Stmt::Function { name, args, expr });
+        }
 
         // TODO: Update/fix/change
         consume_til_line_start(&mut iter);
@@ -443,6 +479,11 @@ fn parse_singular_expression<'a, 'b>(
             iter.next();
             result
         }
+        Some((Token::LowerName(name), _range)) => {
+            let result = Ok((Expr::VarName(name), current));
+            iter.next();
+            result
+        }
         Some((token, range)) => Err(Error::UnexpectedToken {
             found: token.to_string(),
             expected: "Expression token".to_string(),
@@ -544,6 +585,18 @@ fn extract_operator<'a>(stream_token: &Option<SrcToken<'a>>) -> Result<&'a str, 
         Some((token, range)) => Err(Error::UnexpectedToken {
             found: token.to_string(),
             expected: Token::Operator("").to_string(),
+            range: range.clone(),
+        }),
+        None => Err(Error::UnexpectedEnd),
+    }
+}
+
+fn extract_pattern_name<'a>(stream_token: &Option<SrcToken<'a>>) -> Result<Pattern<'a>, Error> {
+    match stream_token {
+        Some((Token::LowerName(name), _range)) => Ok(Pattern::Name(name)),
+        Some((token, range)) => Err(Error::UnexpectedToken {
+            found: token.to_string(),
+            expected: Token::LowerName("").to_string(),
             range: range.clone(),
         }),
         None => Err(Error::UnexpectedEnd),

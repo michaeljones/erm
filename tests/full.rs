@@ -56,7 +56,15 @@ fn eval(string: &str) -> Result<Value, Error> {
     let tokens = Token::lexer(&src);
     let mut iter = tokens.spanned().peekable();
     let module = parser::parse(&mut iter).map_err(Error::ParserError)?;
-    evaluate::evaluate(&module).map_err(Error::EvaluateError)
+    evaluate::evaluate(&module, Vec::new()).map_err(Error::EvaluateError)
+}
+
+fn eval_with_args(string: &str, args: Vec<String>) -> Result<Value, Error> {
+    let src = unindent(&string);
+    let tokens = Token::lexer(&src);
+    let mut iter = tokens.spanned().peekable();
+    let module = parser::parse(&mut iter).map_err(Error::ParserError)?;
+    evaluate::evaluate(&module, args).map_err(Error::EvaluateError)
 }
 
 #[test]
@@ -159,6 +167,22 @@ fn nested_if_statement() {
     assert_eq!(
         result,
         Ok(Value::Integer(12)),
+        "{}",
+        pretty_print(&result, &src)
+    );
+}
+
+#[test]
+fn main_args() {
+    let src = r#"
+        module Main exposing (..)
+        main args =
+          args
+        "#;
+    let result = eval_with_args(src, vec!["Hello".to_string()]);
+    assert_eq!(
+        result,
+        Ok(Value::List(vec![Value::String("Hello".to_string())])),
         "{}",
         pretty_print(&result, &src)
     );

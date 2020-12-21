@@ -1,4 +1,5 @@
 extern crate clap;
+extern crate im;
 extern crate logos;
 extern crate regex;
 extern crate walkdir;
@@ -40,7 +41,8 @@ fn dump_file(filename: &str, _quiet: bool) -> Result<(), Error> {
 
     println!("{:#?}", &module);
 
-    evaluate::evaluate(&module).map_err(|err| {
+    let args = vec!["example_arg".to_string()];
+    evaluate::evaluate(&module, args).map_err(|err| {
         println!("{:?}", &err);
         Error::EvaluateError
     })?;
