@@ -68,6 +68,8 @@ pub enum Error {
     TokensRemaining,
     NoOperand,
     NoOperator,
+    EmptyOperatorStack,
+    UnknownOperator(String),
 }
 
 type TokenIter<'a> = std::iter::Peekable<logos::SpannedIter<'a, Token<'a>>>;
@@ -403,7 +405,7 @@ fn process_stacks<'a>(
     mut operator_stack: &mut Vec<&'a str>,
     mut operand_stack: &mut Vec<Expr<'a>>,
 ) -> Result<(), Error> {
-    if has_greater_precendence(operator, &operator_stack) {
+    if has_greater_precendence(operator, &operator_stack)? {
         operator_stack.push(operator);
     } else {
         let right_hand_expr = operand_stack.pop().ok_or(Error::NoOperand)?;
@@ -422,14 +424,20 @@ fn process_stacks<'a>(
     Ok(())
 }
 
-fn has_greater_precendence<'a>(operator_a: &'a str, operator_stack: &Vec<&'a str>) -> bool {
+fn has_greater_precendence<'a>(
+    operator_a: &'a str,
+    operator_stack: &Vec<&'a str>,
+) -> Result<bool, Error> {
     if operator_stack.is_empty() {
-        true
+        Ok(true)
     } else {
-        let precedence_a = precendence(operator_a);
-        let precedence_b = operator_stack.last().map(|op| precendence(op)).unwrap_or(0);
+        let precedence_a = precendence(operator_a)?;
+        let precedence_b = operator_stack
+            .last()
+            .ok_or(Error::EmptyOperatorStack)
+            .and_then(|op| precendence(op))?;
 
-        precedence_a > precedence_b
+        Ok(precedence_a > precedence_b)
     }
 }
 
@@ -438,12 +446,13 @@ fn has_greater_precendence<'a>(operator_a: &'a str, operator_stack: &Vec<&'a str
 //   - http://faq.elm-community.org/operators.html
 //   - https://github.com/elm-lang/core/blob/master/src/Basics.elm#L72-L90
 //
-fn precendence<'a>(operator: &'a str) -> usize {
+fn precendence<'a>(operator: &'a str) -> Result<usize, Error> {
     match operator {
-        "*" | "/" => 7,
-        "+" | "-" => 6,
-        "++" | "::" => 5,
-        _ => 0,
+        "*" | "/" => Ok(7),
+        "+" | "-" => Ok(6),
+        "++" | "::" => Ok(5),
+        "==" | "/=" | ">" | "<" | "<=" | ">=" => Ok(4),
+        _ => Err(Error::UnknownOperator(operator.to_string())),
     }
 }
 

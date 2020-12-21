@@ -163,6 +163,14 @@ fn evaluate_binary_expression<'b>(
         ("*", Value::Integer(l), Value::Integer(r)) => Ok(Value::Integer(l * r)),
         ("*", Value::Float(l), Value::Float(r)) => Ok(Value::Float(l * r)),
         ("++", Value::String(l), Value::String(r)) => Ok(Value::String(l + &r)),
+        (">", Value::Integer(l), Value::Integer(r)) => Ok(Value::Bool(l > r)),
+        (">", Value::Float(l), Value::Float(r)) => Ok(Value::Bool(l > r)),
+        (">=", Value::Integer(l), Value::Integer(r)) => Ok(Value::Bool(l >= r)),
+        (">=", Value::Float(l), Value::Float(r)) => Ok(Value::Bool(l >= r)),
+        ("<", Value::Integer(l), Value::Integer(r)) => Ok(Value::Bool(l < r)),
+        ("<", Value::Float(l), Value::Float(r)) => Ok(Value::Bool(l < r)),
+        ("<=", Value::Integer(l), Value::Integer(r)) => Ok(Value::Bool(l <= r)),
+        ("<=", Value::Float(l), Value::Float(r)) => Ok(Value::Bool(l <= r)),
         _ => Err(Error::UnsupportedOperation),
     }
 }

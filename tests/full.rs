@@ -89,6 +89,38 @@ fn arithmetic_precendence() {
 }
 
 #[test]
+fn int_comparison_gt() {
+    let src = "
+        module Main exposing (..)
+        main =
+          8 + 12 > 7 + 5
+        ";
+    let result = eval(src);
+    assert_eq!(
+        result,
+        Ok(Value::Bool(true)),
+        "{}",
+        pretty_print(&result, &src)
+    );
+}
+
+#[test]
+fn int_comparison_lt() {
+    let src = "
+        module Main exposing (..)
+        main =
+          8 + 12 < 7 + 5
+        ";
+    let result = eval(src);
+    assert_eq!(
+        result,
+        Ok(Value::Bool(false)),
+        "{}",
+        pretty_print(&result, &src)
+    );
+}
+
+#[test]
 fn string_concatenation() {
     let module = r#"
         module Main exposing (..)
