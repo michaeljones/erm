@@ -327,7 +327,8 @@ fn parse_statements<'a>(mut iter: &mut TokenIter<'a>) -> Result<Vec<Stmt<'a>>, E
         let indent = consume_to_indented(&mut iter, base, current)?;
         current = indent.extract();
 
-        let (expr, _current) = parse_expression(&mut iter, current, current)?;
+        let (expr, curr) = parse_expression(&mut iter, current, current)?;
+        current = curr;
 
         if args.is_empty() {
             statements.push(Stmt::Binding { name, expr });
@@ -336,7 +337,7 @@ fn parse_statements<'a>(mut iter: &mut TokenIter<'a>) -> Result<Vec<Stmt<'a>>, E
         }
 
         // TODO: Update/fix/change
-        consume_til_line_start(&mut iter);
+        consume_to_matching(&mut iter, base, current)?;
     }
 
     Ok(statements)
@@ -376,9 +377,19 @@ fn parse_expression<'a, 'b>(
         process_stacks(operator, &mut operator_stack, &mut operand_stack)?;
 
         let (right_hand_expr, curr) = parse_singular_expression(&mut iter, base, current)?;
-        current = curr;
-        current = must_consume_to_indented(&mut iter, base, current)?;
         operand_stack.push(right_hand_expr);
+        current = curr;
+
+        // Similar to above, we consume the expression on the right hand side of the operator and
+        // then any whitespace afterwards (to reach the next operator if there is one) but if we
+        // find that we're no longer in the indentation scope of the expression then we assume
+        // we've reached the end of it and continue with processing what we've got so far
+        let indent = consume_to_indented(&mut iter, base, current)?;
+        if indent.in_scope() {
+            current = indent.extract();
+        } else {
+            break;
+        }
     }
 
     while operator_stack.len() > 0 {
