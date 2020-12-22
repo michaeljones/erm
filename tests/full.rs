@@ -252,3 +252,20 @@ fn function_call() {
         pretty_print(&result, &src)
     );
 }
+
+#[test]
+fn function_call_with_paren_args() {
+    let src = r#"
+        module Main exposing (..)
+        add x y = x + y
+        main =
+          add (add 2 5) 8
+        "#;
+    let result = eval(src);
+    assert_eq!(
+        result,
+        Ok(Value::Integer(15)),
+        "{}",
+        pretty_print(&result, &src)
+    );
+}

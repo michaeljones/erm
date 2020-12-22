@@ -638,13 +638,16 @@ fn parse_var_or_call<'a>(
     let mut args = Vec::new();
 
     loop {
-        if let Some((Token::Operator(_), _range)) = iter.peek() {
-            // If we've found an operator then we want to exit and let the parse_expression code
-            // handle it
-            break;
+        match iter.peek() {
+            Some((Token::Operator(_), _range)) | Some((Token::CloseParen, _range)) => {
+                // If we've found an operator or closed paren then we want to exit and let the
+                // parse_expression code handle it
+                break;
+            }
+            _ => {}
         }
 
-        let (argument_expr, curr) = parse_contained_expression(&mut iter, base, current)?;
+        let (argument_expr, curr) = parse_singular_expression(&mut iter, base, current)?;
         current = curr;
         args.push(argument_expr);
 
