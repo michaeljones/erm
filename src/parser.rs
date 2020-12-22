@@ -478,48 +478,18 @@ fn parse_singular_expression<'a, 'b>(
 ) -> Result<(Expr<'a>, usize), Error> {
     match iter.peek() {
         Some((Token::If, _range)) => parse_if_expression(&mut iter, base, current),
-        Some((Token::LiteralInteger(int), _range)) => {
-            let result = Ok((Expr::Integer(*int), current));
-            iter.next();
-            result
-        }
-        Some((Token::LiteralFloat(float), _range)) => {
-            let result = Ok((Expr::Float(*float), current));
-            iter.next();
-            result
-        }
-        Some((Token::LiteralString(string), _range)) => {
-            let result = Ok((Expr::String(string), current));
-            iter.next();
-            result
-        }
-        Some((Token::UpperName("True"), _range)) => {
-            let result = Ok((Expr::Bool(true), current));
-            iter.next();
-            result
-        }
-        Some((Token::UpperName("False"), _range)) => {
-            let result = Ok((Expr::Bool(false), current));
-            iter.next();
-            result
-        }
         Some((Token::LowerName(_), _range)) => parse_var_or_call(&mut iter, base, current),
-        Some((token, range)) => Err(Error::UnexpectedToken {
-            found: token.to_string(),
-            expected: "Expression token".to_string(),
-            range: range.clone(),
-        }),
         None => Err(Error::UnexpectedEnd),
+        _ => parse_contained_expression(&mut iter, base, current),
     }
 }
 
-fn parse_argument<'a, 'b>(
-    mut iter: &mut TokenIter<'a>,
-    base: usize,
+fn parse_contained_expression<'a, 'b>(
+    iter: &mut TokenIter<'a>,
+    _base: usize,
     current: usize,
 ) -> Result<(Expr<'a>, usize), Error> {
     match iter.peek() {
-        Some((Token::If, _range)) => parse_if_expression(&mut iter, base, current),
         Some((Token::LiteralInteger(int), _range)) => {
             let result = Ok((Expr::Integer(*int), current));
             iter.next();
@@ -558,6 +528,7 @@ fn parse_argument<'a, 'b>(
         None => Err(Error::UnexpectedEnd),
     }
 }
+
 fn parse_var_or_call<'a>(
     mut iter: &mut TokenIter<'a>,
     base: usize,
@@ -585,7 +556,7 @@ fn parse_var_or_call<'a>(
             break;
         }
 
-        let (argument_expr, curr) = parse_argument(&mut iter, base, current)?;
+        let (argument_expr, curr) = parse_contained_expression(&mut iter, base, current)?;
         current = curr;
         args.push(argument_expr);
 
