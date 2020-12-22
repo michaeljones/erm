@@ -76,7 +76,7 @@ pub fn evaluate(module: &Module, args: Vec<String>) -> Result<Value, Error> {
         }
     } else {
         let call_main = Expr::Call {
-            function: "main",
+            function_name: "main",
             args: vec![Expr::List(
                 args.iter().map(|entry| Expr::String(entry)).collect(),
             )],
@@ -114,7 +114,10 @@ fn evaluate_expression<'b, 'c>(
                 .collect::<Result<Vec<Value>, Error>>()?;
             Ok(Value::List(value_items))
         }
-        Expr::Call { function, args } => evaluate_function_call(function, args, &module, &scopes),
+        Expr::Call {
+            function_name,
+            args,
+        } => evaluate_function_call(function_name, args, &module, &scopes),
         Expr::VarName(name) => env::get_binding(&module, &scopes, name)
             .ok_or(Error::UnknownBinding(name.to_string()))
             .and_then(|bob| evaluate_expression(bob, &module, &scopes)),

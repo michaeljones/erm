@@ -219,3 +219,20 @@ fn main_args() {
         pretty_print(&result, &src)
     );
 }
+
+#[test]
+fn function_call() {
+    let src = r#"
+        module Main exposing (..)
+        add1 x = x + 1
+        main =
+          add1 5
+        "#;
+    let result = eval(src);
+    assert_eq!(
+        result,
+        Ok(Value::Integer(6)),
+        "{}",
+        pretty_print(&result, &src)
+    );
+}

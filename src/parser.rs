@@ -48,7 +48,7 @@ pub enum Expr<'a> {
         else_branch: Box<Expr<'a>>,
     },
     Call {
-        function: &'a str,
+        function_name: &'a str,
         args: Vec<Expr<'a>>,
     },
     VarName(&'a str),
@@ -229,7 +229,10 @@ fn consume_to_indented<'b>(
         }
     }
 
-    Ok(IndentScope::In(0))
+    // In this situation the iterator is returning None so we're at the end of the file/content and
+    // so we're definitely 'out' of the previous scope. It might be sensible for as to introduce a
+    // different IndentScope value for this
+    Ok(IndentScope::Out(0))
 }
 
 fn must_consume_to_indented<'b>(
@@ -500,6 +503,48 @@ fn parse_singular_expression<'a, 'b>(
             iter.next();
             result
         }
+        Some((Token::LowerName(_), _range)) => parse_var_or_call(&mut iter, base, current),
+        Some((token, range)) => Err(Error::UnexpectedToken {
+            found: token.to_string(),
+            expected: "Expression token".to_string(),
+            range: range.clone(),
+        }),
+        None => Err(Error::UnexpectedEnd),
+    }
+}
+
+fn parse_argument<'a, 'b>(
+    mut iter: &mut TokenIter<'a>,
+    base: usize,
+    current: usize,
+) -> Result<(Expr<'a>, usize), Error> {
+    match iter.peek() {
+        Some((Token::If, _range)) => parse_if_expression(&mut iter, base, current),
+        Some((Token::LiteralInteger(int), _range)) => {
+            let result = Ok((Expr::Integer(*int), current));
+            iter.next();
+            result
+        }
+        Some((Token::LiteralFloat(float), _range)) => {
+            let result = Ok((Expr::Float(*float), current));
+            iter.next();
+            result
+        }
+        Some((Token::LiteralString(string), _range)) => {
+            let result = Ok((Expr::String(string), current));
+            iter.next();
+            result
+        }
+        Some((Token::UpperName("True"), _range)) => {
+            let result = Ok((Expr::Bool(true), current));
+            iter.next();
+            result
+        }
+        Some((Token::UpperName("False"), _range)) => {
+            let result = Ok((Expr::Bool(false), current));
+            iter.next();
+            result
+        }
         Some((Token::LowerName(name), _range)) => {
             let result = Ok((Expr::VarName(name), current));
             iter.next();
@@ -513,8 +558,63 @@ fn parse_singular_expression<'a, 'b>(
         None => Err(Error::UnexpectedEnd),
     }
 }
+fn parse_var_or_call<'a>(
+    mut iter: &mut TokenIter<'a>,
+    base: usize,
+    mut current: usize,
+) -> Result<(Expr<'a>, usize), Error> {
+    let name = extract_var_name(&iter.next())?;
 
-fn parse_if_expression<'a, 'b>(
+    // We have to keep parsing to look for more parts to this expression but if we find a change in
+    // indentation that indicates the end of the scope for this expression then we just want to
+    // return the expression we've found so far and allow the level up to deal with the change in
+    // scope.
+    let indent = consume_to_indented(&mut iter, base, current)?;
+    if indent.in_scope() {
+        current = indent.extract();
+    } else {
+        return Ok((Expr::VarName(name), indent.extract()));
+    }
+
+    let mut args = Vec::new();
+
+    loop {
+        if let Some((Token::Operator(_), _range)) = iter.peek() {
+            // If we've found an operator then we want to exit and let the parse_expression code
+            // handle it
+            break;
+        }
+
+        let (argument_expr, curr) = parse_argument(&mut iter, base, current)?;
+        current = curr;
+        args.push(argument_expr);
+
+        // Similar to above, we consume the expression on the right hand side of the operator and
+        // then any whitespace afterwards (to reach the next operator if there is one) but if we
+        // find that we're no longer in the indentation scope of the expression then we assume
+        // we've reached the end of it and continue with processing what we've got so far
+        let indent = consume_to_indented(&mut iter, base, current)?;
+        if indent.in_scope() {
+            current = indent.extract();
+        } else {
+            break;
+        }
+    }
+
+    if args.is_empty() {
+        Ok((Expr::VarName(name), current))
+    } else {
+        Ok((
+            Expr::Call {
+                function_name: name,
+                args,
+            },
+            current,
+        ))
+    }
+}
+
+fn parse_if_expression<'a>(
     mut iter: &mut TokenIter<'a>,
     base: usize,
     mut current: usize,
