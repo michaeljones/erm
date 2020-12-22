@@ -349,11 +349,25 @@ fn parse_statements<'a>(mut iter: &mut TokenIter<'a>) -> Result<Vec<Stmt<'a>>, E
 
 // Expressions
 //
+fn parse_expression<'a, 'b>(
+    mut iter: &mut TokenIter<'a>,
+    base: usize,
+    current: usize,
+) -> Result<(Expr<'a>, usize), Error> {
+    match iter.peek() {
+        Some((Token::If, _range)) => parse_if_expression(&mut iter, base, current),
+        None => Err(Error::UnexpectedEnd),
+        _ => parse_binary_expression(&mut iter, base, current),
+    }
+}
+
+// Binary Expressions
+//
 // Shunting yard approach based on:
 //   - https://eli.thegreenplace.net/2009/03/20/a-recursive-descent-parser-with-an-infix-expression-evaluator
 //   - http://www.engr.mun.ca/~theo/Misc/exp_parsing.htm
 //
-fn parse_expression<'a, 'b>(
+fn parse_binary_expression<'a, 'b>(
     mut iter: &mut TokenIter<'a>,
     base: usize,
     current: usize,
@@ -477,7 +491,6 @@ fn parse_singular_expression<'a, 'b>(
     current: usize,
 ) -> Result<(Expr<'a>, usize), Error> {
     match iter.peek() {
-        Some((Token::If, _range)) => parse_if_expression(&mut iter, base, current),
         Some((Token::LowerName(_), _range)) => parse_var_or_call(&mut iter, base, current),
         None => Err(Error::UnexpectedEnd),
         _ => parse_contained_expression(&mut iter, base, current),
