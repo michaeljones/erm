@@ -146,38 +146,65 @@ fn parse_imports<'a>(mut iter: &mut TokenIter<'a>) -> Result<Vec<Import<'a>>, Er
 
 #[derive(Clone)]
 enum IndentStatus {
-    Inherited(usize),
-    Fresh(usize),
+    Inherited,
+    Fresh,
 }
 
-impl IndentStatus {
+#[derive(Clone)]
+struct Indent {
+    count: usize,
+    status: IndentStatus,
+}
+
+impl Indent {
+    fn inherited(count: usize) -> Self {
+        Indent {
+            status: IndentStatus::Inherited,
+            count: count,
+        }
+    }
+
+    fn fresh(count: usize) -> Self {
+        Indent {
+            status: IndentStatus::Fresh,
+            count: count,
+        }
+    }
+
     fn add(&mut self, count: usize) -> Self {
         // Only add spaces if we've seen a new line
-        match self {
-            IndentStatus::Fresh(curr) => IndentStatus::Fresh(*curr + count),
+        match self.status {
+            IndentStatus::Fresh => Indent {
+                count: self.count + count,
+                status: IndentStatus::Fresh,
+            },
             _ => self.clone(),
         }
     }
 
     fn indented_from(&self, base: usize) -> bool {
-        match self {
-            IndentStatus::Inherited(_) => true,
-            IndentStatus::Fresh(curr) => curr > &base,
+        match self.status {
+            IndentStatus::Inherited => true,
+            IndentStatus::Fresh => self.count > base,
         }
     }
 
     fn matching(&self, base: usize) -> bool {
-        match self {
-            IndentStatus::Inherited(_) => true,
-            IndentStatus::Fresh(curr) => curr == &base,
+        match self.status {
+            IndentStatus::Inherited => true,
+            IndentStatus::Fresh => self.count == base,
+        }
+    }
+
+    fn at_least(&self, base: usize) -> bool {
+        match self.status {
+            IndentStatus::Inherited => true,
+            IndentStatus::Fresh => self.count >= base,
         }
     }
 
     fn extract(&self) -> usize {
-        match self {
-            IndentStatus::Fresh(curr) => *curr,
-            IndentStatus::Inherited(curr) => *curr,
-        }
+        self.count
     }
 }
 
@@ -202,17 +229,19 @@ impl IndentScope {
     }
 }
 
+/// For when we want to continue parsing the current expression if we find an indented line but if
+/// we move out to a shallower indent then we can see that and move to the next part of the parsing
 fn consume_to_indented<'b>(
     iter: &mut TokenIter<'b>,
     base: usize,
     start: usize,
 ) -> Result<IndentScope, Error> {
-    let mut current = IndentStatus::Inherited(start);
+    let mut current = Indent::inherited(start);
 
     while let Some((ref token, _range)) = iter.peek() {
         match token {
             Token::NewLine => {
-                current = IndentStatus::Fresh(0);
+                current = Indent::fresh(0);
                 iter.next();
             }
             Token::Space(count) => {
@@ -235,17 +264,20 @@ fn consume_to_indented<'b>(
     Ok(IndentScope::Out(0))
 }
 
+/// For when the code is only valid if we continue on the same line at an indent on the next line.
+/// For something like "if <expr> then". It isn't valid for <expr> to be at the same indent at the
+/// if-keyword.
 fn must_consume_to_indented<'b>(
     iter: &mut TokenIter<'b>,
     base: usize,
     start: usize,
 ) -> Result<usize, Error> {
-    let mut current = IndentStatus::Inherited(start);
+    let mut current = Indent::inherited(start);
 
     while let Some((ref token, range)) = iter.peek() {
         match token {
             Token::NewLine => {
-                current = IndentStatus::Fresh(0);
+                current = Indent::fresh(0);
                 iter.next();
             }
             Token::Space(count) => {
@@ -267,17 +299,53 @@ fn must_consume_to_indented<'b>(
     Ok(0)
 }
 
-fn consume_to_matching<'b>(
+/// For when the code can continue on the same line or a more indented one. This might be the
+/// closing parenthesis which can be at the same indent at the opening one or more indented.
+fn must_consume_to_at_least<'b>(
     iter: &mut TokenIter<'b>,
     base: usize,
     start: usize,
 ) -> Result<usize, Error> {
-    let mut current = IndentStatus::Inherited(start);
+    let mut current = Indent::inherited(start);
 
     while let Some((ref token, range)) = iter.peek() {
         match token {
             Token::NewLine => {
-                current = IndentStatus::Fresh(0);
+                current = Indent::fresh(0);
+                iter.next();
+            }
+            Token::Space(count) => {
+                current = current.add(*count);
+                iter.next();
+            }
+            _ => {
+                return if current.at_least(base) {
+                    Ok(current.extract())
+                } else {
+                    Err(Error::Indent {
+                        range: range.clone(),
+                    })
+                };
+            }
+        }
+    }
+
+    Ok(0)
+}
+
+/// For when the code must be on the same line or at the expected indentation. eg. the 'if' and
+/// 'else' keywords in an if-statement should be at the same indentation (or on the same line.)
+fn must_consume_to_matching<'b>(
+    iter: &mut TokenIter<'b>,
+    base: usize,
+    start: usize,
+) -> Result<usize, Error> {
+    let mut current = Indent::inherited(start);
+
+    while let Some((ref token, range)) = iter.peek() {
+        match token {
+            Token::NewLine => {
+                current = Indent::fresh(0);
                 iter.next();
             }
             Token::Space(count) => {
@@ -341,7 +409,7 @@ fn parse_statements<'a>(mut iter: &mut TokenIter<'a>) -> Result<Vec<Stmt<'a>>, E
         }
 
         // TODO: Update/fix/change
-        consume_to_matching(&mut iter, base, current)?;
+        must_consume_to_matching(&mut iter, base, current)?;
     }
 
     Ok(statements)
@@ -608,14 +676,14 @@ fn parse_if_expression<'a>(
     let (condition, curr) = parse_expression(&mut iter, current, current)?;
     current = curr;
 
-    current = consume_to_matching(&mut iter, base, current)?;
+    current = must_consume_to_matching(&mut iter, base, current)?;
     matches(&iter.next(), Token::Then)?;
 
     current = must_consume_to_indented(&mut iter, base, current)?;
     let (then_branch, curr) = parse_expression(&mut iter, current, current)?;
     current = curr;
 
-    current = consume_to_matching(&mut iter, base, current)?;
+    current = must_consume_to_matching(&mut iter, base, current)?;
     matches(&iter.next(), Token::Else)?;
 
     current = must_consume_to_indented(&mut iter, base, current)?;
