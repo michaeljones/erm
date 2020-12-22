@@ -65,7 +65,7 @@ pub enum Error {
     Indent {
         range: Range,
     },
-    TokensRemaining,
+    TokensRemaining(Vec<String>),
     NoOperand,
     NoOperator,
     EmptyOperatorStack,
@@ -93,14 +93,15 @@ pub fn parse<'a>(mut iter: &mut TokenIter<'a>) -> Result<Module<'a>, Error> {
 
     let statements = parse_statements(&mut iter)?;
 
-    if iter.next() == None {
+    if iter.peek() == None {
         Ok(Module {
             name,
             imports,
             statements,
         })
     } else {
-        Err(Error::TokensRemaining)
+        let tokens = iter.map(|token| format!("{:?}", token)).collect();
+        Err(Error::TokensRemaining(tokens))
     }
 }
 
