@@ -559,6 +559,13 @@ fn parse_singular_expression<'a, 'b>(
     current: usize,
 ) -> Result<(Expr<'a>, usize), Error> {
     match iter.peek() {
+        Some((Token::OpenParen, _range)) => {
+            matches(&iter.next(), Token::OpenParen)?;
+            let (expr, current) = parse_expression(&mut iter, base, current)?;
+            let current = must_consume_to_at_least(&mut iter, base, current)?;
+            matches(&iter.next(), Token::CloseParen)?;
+            Ok((expr, current))
+        }
         Some((Token::LowerName(_), _range)) => parse_var_or_call(&mut iter, base, current),
         None => Err(Error::UnexpectedEnd),
         _ => parse_contained_expression(&mut iter, base, current),

@@ -89,6 +89,22 @@ fn arithmetic_precendence() {
 }
 
 #[test]
+fn arithmetic_parenthesis() {
+    let src = "
+        module Main exposing (..)
+        main =
+          (10 - 11) * (12 + 13)
+        ";
+    let result = eval(src);
+    assert_eq!(
+        result,
+        Ok(Value::Integer(-25)),
+        "{}",
+        pretty_print(&result, &src)
+    );
+}
+
+#[test]
 fn int_comparison_gt() {
     let src = "
         module Main exposing (..)
