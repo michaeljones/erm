@@ -1,5 +1,5 @@
 extern crate codespan_reporting;
-extern crate elm;
+extern crate erm;
 extern crate logos;
 extern crate unindent;
 
@@ -10,15 +10,15 @@ use codespan_reporting::term::termcolor::Buffer;
 use logos::Logos;
 use unindent::unindent;
 
-use elm::evaluate;
-use elm::evaluate::Value;
-use elm::lexer::{Range, Token};
-use elm::parser;
+use erm::evaluater;
+use erm::evaluater::Value;
+use erm::lexer::{Range, Token};
+use erm::parser;
 
 #[derive(Debug, PartialEq)]
 enum Error {
     ParserError(parser::Error),
-    EvaluateError(evaluate::Error),
+    EvaluateError(evaluater::Error),
 }
 
 fn get_range(result: &Result<Value, Error>) -> Option<Range> {
@@ -56,7 +56,7 @@ fn eval(string: &str) -> Result<Value, Error> {
     let tokens = Token::lexer(&src);
     let mut iter = tokens.spanned().peekable();
     let module = parser::parse(&mut iter).map_err(Error::ParserError)?;
-    evaluate::evaluate(&module, Vec::new()).map_err(Error::EvaluateError)
+    evaluater::evaluate(&module, Vec::new()).map_err(Error::EvaluateError)
 }
 
 fn eval_with_args(string: &str, args: Vec<String>) -> Result<Value, Error> {
@@ -64,7 +64,7 @@ fn eval_with_args(string: &str, args: Vec<String>) -> Result<Value, Error> {
     let tokens = Token::lexer(&src);
     let mut iter = tokens.spanned().peekable();
     let module = parser::parse(&mut iter).map_err(Error::ParserError)?;
-    evaluate::evaluate(&module, args).map_err(Error::EvaluateError)
+    evaluater::evaluate(&module, args).map_err(Error::EvaluateError)
 }
 
 #[test]

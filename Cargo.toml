@@ -1,14 +1,14 @@
 [package]
-name = "elm"
+name = "erm"
 version = "0.1.0"
 authors = ["Michael Jones <michael@zaptic.com>"]
 
 [[bin]]
-name = "elm-parser-dump"
+name = "erm-dump"
 path = "src/dump.rs"
 
 [[bin]]
-name = "elm-parser-check"
+name = "erm-check"
 path = "src/check.rs"
 
 [dependencies]

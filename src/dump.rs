@@ -1,4 +1,5 @@
 extern crate clap;
+extern crate erm;
 extern crate im;
 extern crate logos;
 extern crate regex;
@@ -12,11 +13,9 @@ use logos::Logos;
 use std::fs::File;
 use std::io::prelude::*;
 
-mod evaluate;
-mod lexer;
-mod parser;
-
-use lexer::Token;
+use erm::evaluater;
+use erm::lexer::Token;
+use erm::parser;
 
 #[derive(Debug)]
 enum Error {
@@ -42,7 +41,7 @@ fn dump_file(filename: &str, _quiet: bool) -> Result<(), Error> {
     println!("{:#?}", &module);
 
     let args = vec!["example_arg".to_string()];
-    evaluate::evaluate(&module, args).map_err(|err| {
+    evaluater::evaluate(&module, args).map_err(|err| {
         println!("{:?}", &err);
         Error::EvaluateError
     })?;
