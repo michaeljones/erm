@@ -1,12 +1,37 @@
 use super::env;
 use super::parser::{Expr, Module, Pattern, Stmt};
 
+pub enum Function<'a> {
+    BuiltIn(Box<dyn Func>),
+    UserDefined(&'a Stmt<'a>),
+}
+
+pub trait Func {
+    fn call<'a>(&self, args: Vec<Value>) -> Result<Value, Error>;
+}
+
+pub struct StringFromInt {}
+
+impl Func for StringFromInt {
+    fn call<'a>(&self, args: Vec<Value>) -> Result<Value, Error> {
+        if args.len() != 1 {
+            return Err(Error::WrongArity);
+        }
+
+        match args.first() {
+            Some(Value::Integer(int)) => Ok(Value::String(int.to_string())),
+            _ => Err(Error::WrongArgumentType),
+        }
+    }
+}
+
 #[derive(Debug, PartialEq)]
 pub enum Error {
     UnsupportedOperation,
     UnknownFunction(String),
     UnknownBinding(String),
     WrongArity,
+    WrongArgumentType,
 }
 
 #[derive(Debug, PartialEq)]
@@ -81,21 +106,30 @@ fn evaluate_function_call<'b>(
     module: &'b Module<'b>,
     scopes: &env::Scopes<'b>,
 ) -> Result<Value, Error> {
-    if let Some(Stmt::Function { args, expr, .. }) = env::get_function(&module, name) {
-        if arg_exprs.len() != args.len() {
-            Err(Error::WrongArity)
-        } else {
-            let arg_scope = args
-                .iter()
-                .zip(arg_exprs.iter())
-                .map(|(Pattern::Name(name), expr)| (name.to_string(), expr))
-                .collect();
+    match env::get_function(&module, name) {
+        Some(Function::UserDefined(Stmt::Function { args, expr, .. })) => {
+            if arg_exprs.len() != args.len() {
+                Err(Error::WrongArity)
+            } else {
+                let arg_scope = args
+                    .iter()
+                    .zip(arg_exprs.iter())
+                    .map(|(Pattern::Name(name), expr)| (name.to_string(), expr))
+                    .collect();
 
-            let new_scope = env::add_scope(&scopes, arg_scope);
-            evaluate_expression(expr, &module, &new_scope)
+                let new_scope = env::add_scope(&scopes, arg_scope);
+                evaluate_expression(expr, &module, &new_scope)
+            }
         }
-    } else {
-        Err(Error::UnknownFunction(name.to_string()))
+        Some(Function::BuiltIn(func)) => {
+            let arg_values = arg_exprs
+                .iter()
+                .map(|expr| evaluate_expression(&expr, &module, &scopes))
+                .collect::<Result<Vec<Value>, Error>>()?;
+
+            func.call(arg_values)
+        }
+        _ => Err(Error::UnknownFunction(name.to_string())),
     }
 }
 

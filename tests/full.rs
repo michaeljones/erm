@@ -10,6 +10,7 @@ use codespan_reporting::term::termcolor::Buffer;
 use logos::Logos;
 use unindent::unindent;
 
+use erm::checker;
 use erm::evaluater;
 use erm::evaluater::Value;
 use erm::lexer::{Range, Token};
@@ -18,6 +19,7 @@ use erm::parser;
 #[derive(Debug, PartialEq)]
 enum Error {
     ParserError(parser::Error),
+    CheckError(checker::Error),
     EvaluateError(evaluater::Error),
 }
 
@@ -56,6 +58,7 @@ fn eval(string: &str) -> Result<Value, Error> {
     let tokens = Token::lexer(&src);
     let mut iter = tokens.spanned().peekable();
     let module = parser::parse(&mut iter).map_err(Error::ParserError)?;
+    checker::check(&module).map_err(Error::CheckError)?;
     evaluater::evaluate(&module, Vec::new()).map_err(Error::EvaluateError)
 }
 
@@ -64,7 +67,30 @@ fn eval_with_args(string: &str, args: Vec<String>) -> Result<Value, Error> {
     let tokens = Token::lexer(&src);
     let mut iter = tokens.spanned().peekable();
     let module = parser::parse(&mut iter).map_err(Error::ParserError)?;
+    checker::check(&module).map_err(Error::CheckError)?;
     evaluater::evaluate(&module, args).map_err(Error::EvaluateError)
+}
+
+#[test]
+fn basic_string() {
+    let src = r#"
+        module Main exposing (..)
+        main =
+          "hello, world"
+        "#;
+    let result = eval(src);
+    assert_eq!(result, Ok(Value::String("hello, world".to_string())),);
+}
+
+#[test]
+fn string_from_int() {
+    let src = "
+        module Main exposing (..)
+        main =
+          stringFromInt 5
+        ";
+    let result = eval(src);
+    assert_eq!(result, Ok(Value::String("5".to_string())),);
 }
 
 #[test]
@@ -72,7 +98,7 @@ fn add_ints() {
     let src = "
         module Main exposing (..)
         main =
-          1 + 3
+          stringFromInt (1 + 3)
         ";
     let result = eval(src);
     assert_eq!(result, Ok(Value::Integer(4)),);
