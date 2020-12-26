@@ -1,4 +1,4 @@
-use lexer::{Range, SrcToken, Token};
+use lexer::{Range, SrcToken, Token, TokenIter};
 
 #[derive(Debug)]
 pub struct Module<'a> {
@@ -71,8 +71,6 @@ pub enum Error {
     EmptyOperatorStack,
     UnknownOperator(String),
 }
-
-type TokenIter<'a> = std::iter::Peekable<logos::SpannedIter<'a, Token<'a>>>;
 
 pub type ParseResult<'src> = Result<Module<'src>, Error>;
 

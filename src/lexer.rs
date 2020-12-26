@@ -5,6 +5,9 @@ pub type Range = std::ops::Range<usize>;
 #[allow(dead_code)]
 pub type SrcToken<'src> = (Token<'src>, Range);
 
+#[allow(dead_code)]
+pub type TokenIter<'src> = std::iter::Peekable<logos::SpannedIter<'src, Token<'src>>>;
+
 #[derive(Logos, Debug, PartialEq, Clone)]
 pub enum Token<'src> {
     // Keywords
