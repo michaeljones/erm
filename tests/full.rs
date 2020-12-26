@@ -12,7 +12,7 @@ use unindent::unindent;
 
 use erm::checker;
 use erm::evaluater;
-use erm::evaluater::Value;
+use erm::evaluater::values::Value;
 use erm::lexer::{Range, Token};
 use erm::parser;
 

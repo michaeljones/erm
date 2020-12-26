@@ -1,46 +1,18 @@
+pub mod values;
+
+use self::values::Value;
 use super::env;
+use super::function;
+use super::function::Function;
 use super::parser::{Expr, Module, Pattern, Stmt};
-
-pub enum Function<'a> {
-    BuiltIn(Box<dyn Func>),
-    UserDefined(&'a Stmt<'a>),
-}
-
-pub trait Func {
-    fn call<'a>(&self, args: Vec<Value>) -> Result<Value, Error>;
-}
-
-pub struct StringFromInt {}
-
-impl Func for StringFromInt {
-    fn call<'a>(&self, args: Vec<Value>) -> Result<Value, Error> {
-        if args.len() != 1 {
-            return Err(Error::WrongArity);
-        }
-
-        match args.first() {
-            Some(Value::Integer(int)) => Ok(Value::String(int.to_string())),
-            _ => Err(Error::WrongArgumentType),
-        }
-    }
-}
 
 #[derive(Debug, PartialEq)]
 pub enum Error {
     UnsupportedOperation,
     UnknownFunction(String),
     UnknownBinding(String),
+    FunctionError(function::Error),
     WrongArity,
-    WrongArgumentType,
-}
-
-#[derive(Debug, PartialEq)]
-pub enum Value {
-    Bool(bool),
-    Integer(i32),
-    Float(f32),
-    String(String),
-    List(Vec<Value>),
 }
 
 pub fn evaluate(module: &Module, args: Vec<String>) -> Result<Value, Error> {
@@ -127,7 +99,7 @@ fn evaluate_function_call<'b>(
                 .map(|expr| evaluate_expression(&expr, &module, &scopes))
                 .collect::<Result<Vec<Value>, Error>>()?;
 
-            func.call(arg_values)
+            func.call(arg_values).map_err(Error::FunctionError)
         }
         _ => Err(Error::UnknownFunction(name.to_string())),
     }

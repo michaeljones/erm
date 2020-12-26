@@ -1,4 +1,4 @@
-use super::evaluater::{Function, StringFromInt};
+use super::function::{Function, StringFromInt};
 use super::parser::{Expr, Module, Stmt};
 use std::collections::HashMap;
 

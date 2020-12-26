@@ -1,29 +1,18 @@
+pub mod term;
+
 use im::HashMap;
 
+use self::term::{Term, Value};
 use super::env;
-use super::parser::{Expr, Module};
-
-#[derive(Debug, PartialEq, Clone)]
-pub enum Value {
-    Bool,
-    Integer,
-    Float,
-    String,
-}
-
-#[derive(Debug, PartialEq, Clone)]
-pub enum Term {
-    Constant(Value),
-    Var(String),
-    Function { name: String, signature: Vec<Term> },
-}
+use super::function::{Func, Function};
+use super::parser::{Expr, Module, Stmt};
 
 #[derive(Debug, PartialEq)]
 pub enum Error {
     UnknownBinding(String),
     UnhandledExpression,
     FailedToUnify,
-    UnknownFunction,
+    UnknownFunction(String),
     TooManyArguments,
 }
 
@@ -45,7 +34,7 @@ pub fn check<'src>(module: &Module<'src>) -> Result<(), Error> {
             // if "main" is a function.
             //
             // TODO: Inspect any explicitly written type on main and resolve against that?
-            let main_term = expression_to_term(&expr)?;
+            let main_term = expression_to_term(&expr, &module)?;
             let target_term = Term::Constant(Value::String);
             let subs = HashMap::new();
 
@@ -55,7 +44,7 @@ pub fn check<'src>(module: &Module<'src>) -> Result<(), Error> {
     }
 }
 
-fn expression_to_term<'src>(expr: &Expr<'src>) -> Result<Term, Error> {
+fn expression_to_term<'src>(expr: &Expr<'src>, module: &Module<'src>) -> Result<Term, Error> {
     match expr {
         Expr::Bool(_) => Ok(Term::Constant(Value::Bool)),
         Expr::Integer(_) => Ok(Term::Constant(Value::Integer)),
@@ -63,7 +52,7 @@ fn expression_to_term<'src>(expr: &Expr<'src>) -> Result<Term, Error> {
         Expr::Call {
             function_name,
             args,
-        } => call_to_term(function_name, args),
+        } => call_to_term(function_name, args, &module),
         _ => Err(Error::UnhandledExpression),
     }
 }
@@ -71,17 +60,23 @@ fn expression_to_term<'src>(expr: &Expr<'src>) -> Result<Term, Error> {
 fn call_to_term<'src>(
     function_name: &'src str,
     args: &'src Vec<Expr<'src>>,
+    module: &Module<'src>,
 ) -> Result<Term, Error> {
-    let (_name, signature) = match function_name {
-        "stringFromInt" => Ok((
-            "stringFromInt".to_string(),
-            vec![
-                Term::Constant(Value::Integer),
-                Term::Constant(Value::String),
-            ],
-        )),
-        _ => Err(Error::UnknownFunction),
-    }?;
+    match env::get_function(&module, function_name) {
+        Some(Function::UserDefined(Stmt::Function { .. })) => {
+            Err(Error::UnknownFunction(function_name.to_string()))
+        }
+        Some(Function::BuiltIn(func)) => built_in_to_term(func, args, &module),
+        _ => Err(Error::UnknownFunction(function_name.to_string())),
+    }
+}
+
+fn built_in_to_term<'src>(
+    func: Box<dyn Func>,
+    args: &'src Vec<Expr<'src>>,
+    module: &Module<'src>,
+) -> Result<Term, Error> {
+    let signature = func.term();
 
     if args.len() >= signature.len() {
         return Err(Error::TooManyArguments);
@@ -89,7 +84,7 @@ fn call_to_term<'src>(
 
     let arg_terms = args
         .iter()
-        .map(|arg| expression_to_term(&arg))
+        .map(|arg| expression_to_term(&arg, &module))
         .collect::<Result<Vec<Term>, Error>>()?;
 
     let remaining: Vec<&Term> = signature
