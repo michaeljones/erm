@@ -1,3 +1,5 @@
+mod indent;
+
 use lexer::{Range, SrcToken, Token, TokenIter};
 
 #[derive(Debug)]
@@ -144,229 +146,6 @@ fn parse_imports<'a>(mut iter: &mut TokenIter<'a>) -> Result<Vec<Import<'a>>, Er
     Ok(imports)
 }
 
-#[derive(Clone)]
-enum IndentStatus {
-    Inherited,
-    Fresh,
-}
-
-#[derive(Clone)]
-struct Indent {
-    count: usize,
-    status: IndentStatus,
-}
-
-impl Indent {
-    fn inherited(count: usize) -> Self {
-        Indent {
-            status: IndentStatus::Inherited,
-            count: count,
-        }
-    }
-
-    fn fresh(count: usize) -> Self {
-        Indent {
-            status: IndentStatus::Fresh,
-            count: count,
-        }
-    }
-
-    fn add(&mut self, count: usize) -> Self {
-        // Only add spaces if we've seen a new line
-        match self.status {
-            IndentStatus::Fresh => Indent {
-                count: self.count + count,
-                status: IndentStatus::Fresh,
-            },
-            _ => self.clone(),
-        }
-    }
-
-    fn indented_from(&self, base: usize) -> bool {
-        match self.status {
-            IndentStatus::Inherited => true,
-            IndentStatus::Fresh => self.count > base,
-        }
-    }
-
-    fn matching(&self, base: usize) -> bool {
-        match self.status {
-            IndentStatus::Inherited => true,
-            IndentStatus::Fresh => self.count == base,
-        }
-    }
-
-    fn at_least(&self, base: usize) -> bool {
-        match self.status {
-            IndentStatus::Inherited => true,
-            IndentStatus::Fresh => self.count >= base,
-        }
-    }
-
-    fn extract(&self) -> usize {
-        self.count
-    }
-}
-
-#[derive(Clone)]
-enum IndentScope {
-    In(usize),
-    Out(usize),
-}
-
-impl IndentScope {
-    fn in_scope(&self) -> bool {
-        match self {
-            IndentScope::In(_) => true,
-            IndentScope::Out(_) => false,
-        }
-    }
-    fn extract(&self) -> usize {
-        match self {
-            IndentScope::In(curr) => *curr,
-            IndentScope::Out(curr) => *curr,
-        }
-    }
-}
-
-/// For when we want to continue parsing the current expression if we find an indented line but if
-/// we move out to a shallower indent then we can see that and move to the next part of the parsing
-fn consume_to_indented<'b>(
-    iter: &mut TokenIter<'b>,
-    base: usize,
-    start: usize,
-) -> Result<IndentScope, Error> {
-    let mut current = Indent::inherited(start);
-
-    while let Some((ref token, _range)) = iter.peek() {
-        match token {
-            Token::NewLine => {
-                current = Indent::fresh(0);
-                iter.next();
-            }
-            Token::Space(count) => {
-                current = current.add(*count);
-                iter.next();
-            }
-            _ => {
-                return if current.indented_from(base) {
-                    Ok(IndentScope::In(current.extract()))
-                } else {
-                    Ok(IndentScope::Out(current.extract()))
-                };
-            }
-        }
-    }
-
-    // In this situation the iterator is returning None so we're at the end of the file/content and
-    // so we're definitely 'out' of the previous scope. It might be sensible for as to introduce a
-    // different IndentScope value for this
-    Ok(IndentScope::Out(0))
-}
-
-/// For when the code is only valid if we continue on the same line at an indent on the next line.
-/// For something like "if <expr> then". It isn't valid for <expr> to be at the same indent at the
-/// if-keyword.
-fn must_consume_to_indented<'b>(
-    iter: &mut TokenIter<'b>,
-    base: usize,
-    start: usize,
-) -> Result<usize, Error> {
-    let mut current = Indent::inherited(start);
-
-    while let Some((ref token, range)) = iter.peek() {
-        match token {
-            Token::NewLine => {
-                current = Indent::fresh(0);
-                iter.next();
-            }
-            Token::Space(count) => {
-                current = current.add(*count);
-                iter.next();
-            }
-            _ => {
-                return if current.indented_from(base) {
-                    Ok(current.extract())
-                } else {
-                    Err(Error::Indent {
-                        range: range.clone(),
-                    })
-                };
-            }
-        }
-    }
-
-    Ok(0)
-}
-
-/// For when the code can continue on the same line or a more indented one. This might be the
-/// closing parenthesis which can be at the same indent at the opening one or more indented.
-fn must_consume_to_at_least<'b>(
-    iter: &mut TokenIter<'b>,
-    base: usize,
-    start: usize,
-) -> Result<usize, Error> {
-    let mut current = Indent::inherited(start);
-
-    while let Some((ref token, range)) = iter.peek() {
-        match token {
-            Token::NewLine => {
-                current = Indent::fresh(0);
-                iter.next();
-            }
-            Token::Space(count) => {
-                current = current.add(*count);
-                iter.next();
-            }
-            _ => {
-                return if current.at_least(base) {
-                    Ok(current.extract())
-                } else {
-                    Err(Error::Indent {
-                        range: range.clone(),
-                    })
-                };
-            }
-        }
-    }
-
-    Ok(0)
-}
-
-/// For when the code must be on the same line or at the expected indentation. eg. the 'if' and
-/// 'else' keywords in an if-statement should be at the same indentation (or on the same line.)
-fn must_consume_to_matching<'b>(
-    iter: &mut TokenIter<'b>,
-    base: usize,
-    start: usize,
-) -> Result<usize, Error> {
-    let mut current = Indent::inherited(start);
-
-    while let Some((ref token, range)) = iter.peek() {
-        match token {
-            Token::NewLine => {
-                current = Indent::fresh(0);
-                iter.next();
-            }
-            Token::Space(count) => {
-                current = current.add(*count);
-                iter.next();
-            }
-            _ => {
-                return if current.matching(base) {
-                    Ok(current.extract())
-                } else {
-                    Err(Error::Indent {
-                        range: range.clone(),
-                    })
-                };
-            }
-        }
-    }
-
-    Ok(0)
-}
-
 // Statements
 fn parse_statements<'a>(mut iter: &mut TokenIter<'a>) -> Result<Vec<Stmt<'a>>, Error> {
     let mut statements = vec![];
@@ -396,7 +175,7 @@ fn parse_statements<'a>(mut iter: &mut TokenIter<'a>) -> Result<Vec<Stmt<'a>>, E
         let base = 0;
         let mut current = 0;
 
-        let indent = consume_to_indented(&mut iter, base, current)?;
+        let indent = indent::consume_to_indented(&mut iter, base, current)?;
         current = indent.extract();
 
         let (expr, curr) = parse_expression(&mut iter, current, current)?;
@@ -409,7 +188,7 @@ fn parse_statements<'a>(mut iter: &mut TokenIter<'a>) -> Result<Vec<Stmt<'a>>, E
         }
 
         // TODO: Update/fix/change
-        must_consume_to_matching(&mut iter, base, current)?;
+        indent::must_consume_to_matching(&mut iter, base, current)?;
     }
 
     Ok(statements)
@@ -446,7 +225,7 @@ fn parse_binary_expression<'a, 'b>(
     // indentation that indicates the end of the scope for this expression then we just want to
     // return the expression we've found so far and allow the level up to deal with the change in
     // scope.
-    let indent = consume_to_indented(&mut iter, base, current)?;
+    let indent = indent::consume_to_indented(&mut iter, base, current)?;
     if indent.in_scope() {
         current = indent.extract();
     } else {
@@ -458,7 +237,7 @@ fn parse_binary_expression<'a, 'b>(
 
     while matches!(iter.peek(), Some((Token::Operator(_), _range))) {
         let operator = extract_operator(&iter.next())?;
-        current = must_consume_to_indented(&mut iter, base, current)?;
+        current = indent::must_consume_to_indented(&mut iter, base, current)?;
 
         process_stacks(operator, &mut operator_stack, &mut operand_stack)?;
 
@@ -470,7 +249,7 @@ fn parse_binary_expression<'a, 'b>(
         // then any whitespace afterwards (to reach the next operator if there is one) but if we
         // find that we're no longer in the indentation scope of the expression then we assume
         // we've reached the end of it and continue with processing what we've got so far
-        let indent = consume_to_indented(&mut iter, base, current)?;
+        let indent = indent::consume_to_indented(&mut iter, base, current)?;
         if indent.in_scope() {
             current = indent.extract();
         } else {
@@ -562,7 +341,7 @@ fn parse_singular_expression<'a, 'b>(
         Some((Token::OpenParen, _range)) => {
             matches(&iter.next(), Token::OpenParen)?;
             let (expr, current) = parse_expression(&mut iter, base, current)?;
-            let current = must_consume_to_at_least(&mut iter, base, current)?;
+            let current = indent::must_consume_to_at_least(&mut iter, base, current)?;
             matches(&iter.next(), Token::CloseParen)?;
             Ok((expr, current))
         }
@@ -628,7 +407,7 @@ fn parse_var_or_call<'a>(
     // indentation that indicates the end of the scope for this expression then we just want to
     // return the expression we've found so far and allow the level up to deal with the change in
     // scope.
-    let indent = consume_to_indented(&mut iter, base, current)?;
+    let indent = indent::consume_to_indented(&mut iter, base, current)?;
     if indent.in_scope() {
         current = indent.extract();
     } else {
@@ -655,7 +434,7 @@ fn parse_var_or_call<'a>(
         // then any whitespace afterwards (to reach the next operator if there is one) but if we
         // find that we're no longer in the indentation scope of the expression then we assume
         // we've reached the end of it and continue with processing what we've got so far
-        let indent = consume_to_indented(&mut iter, base, current)?;
+        let indent = indent::consume_to_indented(&mut iter, base, current)?;
         if indent.in_scope() {
             current = indent.extract();
         } else {
@@ -682,21 +461,21 @@ fn parse_if_expression<'a>(
     mut current: usize,
 ) -> Result<(Expr<'a>, usize), Error> {
     matches(&iter.next(), Token::If)?;
-    current = must_consume_to_indented(&mut iter, base, current)?;
+    current = indent::must_consume_to_indented(&mut iter, base, current)?;
     let (condition, curr) = parse_expression(&mut iter, current, current)?;
     current = curr;
 
-    current = must_consume_to_matching(&mut iter, base, current)?;
+    current = indent::must_consume_to_matching(&mut iter, base, current)?;
     matches(&iter.next(), Token::Then)?;
 
-    current = must_consume_to_indented(&mut iter, base, current)?;
+    current = indent::must_consume_to_indented(&mut iter, base, current)?;
     let (then_branch, curr) = parse_expression(&mut iter, current, current)?;
     current = curr;
 
-    current = must_consume_to_matching(&mut iter, base, current)?;
+    current = indent::must_consume_to_matching(&mut iter, base, current)?;
     matches(&iter.next(), Token::Else)?;
 
-    current = must_consume_to_indented(&mut iter, base, current)?;
+    current = indent::must_consume_to_indented(&mut iter, base, current)?;
     let (else_branch, current) = parse_expression(&mut iter, current, current)?;
 
     Ok((
