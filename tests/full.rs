@@ -7,13 +7,12 @@ use codespan_reporting::diagnostic::{Diagnostic, Label};
 use codespan_reporting::files::SimpleFiles;
 use codespan_reporting::term;
 use codespan_reporting::term::termcolor::Buffer;
-use logos::Logos;
 use unindent::unindent;
 
 use erm::checker;
 use erm::evaluater;
 use erm::evaluater::values::Value;
-use erm::lexer::{Range, Token};
+use erm::lexer::Range;
 use erm::parser;
 
 #[derive(Debug, PartialEq)]
@@ -55,18 +54,14 @@ fn pretty_print(result: &Result<Value, Error>, src: &str) -> String {
 
 fn eval(string: &str) -> Result<Value, Error> {
     let src = unindent(&string);
-    let tokens = Token::lexer(&src);
-    let mut iter = tokens.spanned().peekable();
-    let module = parser::parse(&mut iter).map_err(Error::ParserError)?;
+    let module = erm::parse_source(&src).map_err(Error::ParserError)?;
     checker::check(&module).map_err(Error::CheckError)?;
     evaluater::evaluate(&module, Vec::new()).map_err(Error::EvaluateError)
 }
 
 fn eval_with_args(string: &str, args: Vec<String>) -> Result<Value, Error> {
     let src = unindent(&string);
-    let tokens = Token::lexer(&src);
-    let mut iter = tokens.spanned().peekable();
-    let module = parser::parse(&mut iter).map_err(Error::ParserError)?;
+    let module = erm::parse_source(&src).map_err(Error::ParserError)?;
     checker::check(&module).map_err(Error::CheckError)?;
     evaluater::evaluate(&module, args).map_err(Error::EvaluateError)
 }

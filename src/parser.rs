@@ -74,7 +74,9 @@ pub enum Error {
 
 type TokenIter<'a> = std::iter::Peekable<logos::SpannedIter<'a, Token<'a>>>;
 
-pub fn parse<'a>(mut iter: &mut TokenIter<'a>) -> Result<Module<'a>, Error> {
+pub type ParseResult<'src> = Result<Module<'src>, Error>;
+
+pub fn parse<'src>(mut iter: &mut TokenIter<'src>) -> ParseResult<'src> {
     matches(&iter.next(), Token::Module)?;
     matches_space(&iter.next())?;
     let name = extract_upper_name(&iter.next())?;
