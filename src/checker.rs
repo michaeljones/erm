@@ -1,6 +1,7 @@
 pub mod term;
 
 use im::HashMap;
+use std::rc::Rc;
 
 use self::term::{Term, Value};
 use super::env;
@@ -10,16 +11,17 @@ use super::parser::{Expr, Module, Stmt};
 #[derive(Debug, PartialEq)]
 pub enum Error {
     UnknownBinding(String),
-    UnhandledExpression,
+    UnhandledExpression(String),
     FailedToUnify,
     UnknownFunction(String),
     TooManyArguments,
 }
 
 pub fn check<'src>(module: &Module<'src>) -> Result<(), Error> {
-    let scopes = im::Vector::new();
+    let scope = env::Scope::from_module(&module);
+    let scopes = vector![Rc::new(scope)];
     // let mut var_generator = VarGenerator::new();
-    match env::get_binding(&module, &scopes, "main") {
+    match env::get_binding(&scopes, "main") {
         Some(expr) => {
             // Generate Term version of Expr tree
             //
@@ -34,7 +36,9 @@ pub fn check<'src>(module: &Module<'src>) -> Result<(), Error> {
             // if "main" is a function.
             //
             // TODO: Inspect any explicitly written type on main and resolve against that?
-            let main_term = expression_to_term(&expr, &module)?;
+            let scope = env::Scope::from_module(&module);
+            let scopes = vector![Rc::new(scope)];
+            let main_term = expression_to_term(&expr, &scopes)?;
             let target_term = Term::Constant(Value::String);
             let subs = HashMap::new();
 
@@ -44,7 +48,10 @@ pub fn check<'src>(module: &Module<'src>) -> Result<(), Error> {
     }
 }
 
-fn expression_to_term<'src>(expr: &Expr<'src>, module: &Module<'src>) -> Result<Term, Error> {
+fn expression_to_term<'a, 'src>(
+    expr: &'src Expr<'src>,
+    scopes: &'a env::Scopes<'src>,
+) -> Result<Term, Error> {
     match expr {
         Expr::Bool(_) => Ok(Term::Constant(Value::Bool)),
         Expr::Integer(_) => Ok(Term::Constant(Value::Integer)),
@@ -52,29 +59,29 @@ fn expression_to_term<'src>(expr: &Expr<'src>, module: &Module<'src>) -> Result<
         Expr::Call {
             function_name,
             args,
-        } => call_to_term(function_name, args, &module),
-        _ => Err(Error::UnhandledExpression),
+        } => call_to_term(function_name, args, &scopes),
+        _ => Err(Error::UnhandledExpression(format!("{:?}", expr))),
     }
 }
 
-fn call_to_term<'src>(
+fn call_to_term<'a, 'src>(
     function_name: &'src str,
     args: &'src Vec<Expr<'src>>,
-    module: &Module<'src>,
+    scopes: &'a env::Scopes<'src>,
 ) -> Result<Term, Error> {
-    match env::get_function(&module, function_name) {
+    match env::get_function(&scopes, function_name) {
         Some(Function::UserDefined(Stmt::Function { .. })) => {
             Err(Error::UnknownFunction(function_name.to_string()))
         }
-        Some(Function::BuiltIn(func)) => built_in_to_term(func, args, &module),
+        Some(Function::BuiltIn(func)) => built_in_to_term(func, args, &scopes),
         _ => Err(Error::UnknownFunction(function_name.to_string())),
     }
 }
 
-fn built_in_to_term<'src>(
-    func: Box<dyn Func>,
+fn built_in_to_term<'a, 'src>(
+    func: Rc<dyn Func>,
     args: &'src Vec<Expr<'src>>,
-    module: &Module<'src>,
+    scopes: &'a env::Scopes<'src>,
 ) -> Result<Term, Error> {
     let signature = func.term();
 
@@ -84,7 +91,7 @@ fn built_in_to_term<'src>(
 
     let arg_terms = args
         .iter()
-        .map(|arg| expression_to_term(&arg, &module))
+        .map(|arg| expression_to_term(&arg, &scopes))
         .collect::<Result<Vec<Term>, Error>>()?;
 
     let remaining: Vec<&Term> = signature

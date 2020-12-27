@@ -1,3 +1,4 @@
+#[macro_use]
 extern crate im;
 extern crate logos;
 

@@ -212,8 +212,8 @@ fn parse_statements<'a>(mut iter: &mut TokenIter<'a>) -> Result<Vec<Stmt<'a>>, E
 
 fn parse_infix<'src>(
     mut iter: &mut TokenIter<'src>,
-    base: usize,
-    mut current: usize,
+    _base: usize,
+    mut _current: usize,
 ) -> Result<Stmt<'src>, Error> {
     matches(&iter.next(), Token::Infix)?;
     consume_spaces(&mut iter);

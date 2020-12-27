@@ -1,3 +1,5 @@
+use std::rc::Rc;
+
 use super::checker::term;
 use super::evaluater::values;
 use super::parser::Stmt;
@@ -8,8 +10,9 @@ pub enum Error {
     WrongArgumentType,
 }
 
+#[derive(Clone)]
 pub enum Function<'a> {
-    BuiltIn(Box<dyn Func>),
+    BuiltIn(Rc<dyn Func>),
     UserDefined(&'a Stmt<'a>),
 }
 
