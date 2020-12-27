@@ -1,5 +1,7 @@
 mod indent;
 
+use std::convert::TryFrom;
+
 use lexer::{Range, SrcToken, Token, TokenIter};
 
 #[derive(Debug)]
@@ -25,6 +27,33 @@ pub enum Stmt<'a> {
         args: Vec<Pattern<'a>>,
         expr: Expr<'a>,
     },
+    Infix {
+        operator: &'a str,
+        associativity: Associativity,
+        precedence: usize,
+        function_name: &'a str,
+    },
+}
+
+#[derive(Debug)]
+pub enum Associativity {
+    Left,
+    Right,
+    Non,
+}
+
+fn extract_associativity<'a>(stream_token: &Option<SrcToken<'a>>) -> Result<Associativity, Error> {
+    match stream_token {
+        Some((Token::LowerName("left"), _range)) => Ok(Associativity::Left),
+        Some((Token::LowerName("right"), _range)) => Ok(Associativity::Right),
+        Some((Token::LowerName("non"), _range)) => Ok(Associativity::Non),
+        Some((token, range)) => Err(Error::UnexpectedToken {
+            found: token.to_string(),
+            expected: "LowerName with 'left', 'right', or 'non".to_string(),
+            range: range.clone(),
+        }),
+        None => Err(Error::UnexpectedEnd),
+    }
 }
 
 #[derive(Debug)]
@@ -72,6 +101,7 @@ pub enum Error {
     NoOperator,
     EmptyOperatorStack,
     UnknownOperator(String),
+    NegativePrecendence,
 }
 
 pub type ParseResult<'src> = Result<Module<'src>, Error>;
@@ -150,41 +180,27 @@ fn parse_imports<'a>(mut iter: &mut TokenIter<'a>) -> Result<Vec<Import<'a>>, Er
 fn parse_statements<'a>(mut iter: &mut TokenIter<'a>) -> Result<Vec<Stmt<'a>>, Error> {
     let mut statements = vec![];
 
+    let base = 0;
+    let current = 0;
+
     loop {
-        if !matches!(iter.peek(), Some((Token::LowerName(_), _range))) {
-            break;
-        }
-
-        let name = extract_var_name(&iter.next())?;
-        consume_spaces(&mut iter);
-
-        let mut args = Vec::new();
-        loop {
-            if !matches!(iter.peek(), Some((Token::LowerName(_), _range))) {
-                break;
+        match iter.peek() {
+            Some((Token::LowerName(_), _range)) => {
+                let statement = parse_function_or_binding(&mut iter, base, current)?;
+                statements.push(statement);
             }
-
-            let arg = extract_pattern_name(&iter.next())?;
-            args.push(arg);
-
-            consume_spaces(&mut iter);
-        }
-
-        matches(&iter.next(), Token::Equals)?;
-
-        let base = 0;
-        let mut current = 0;
-
-        let indent = indent::consume_to_indented(&mut iter, base, current)?;
-        current = indent.extract();
-
-        let (expr, curr) = parse_expression(&mut iter, current, current)?;
-        current = curr;
-
-        if args.is_empty() {
-            statements.push(Stmt::Binding { name, expr });
-        } else {
-            statements.push(Stmt::Function { name, args, expr });
+            Some((Token::Infix, _range)) => {
+                let statement = parse_infix(&mut iter, base, current)?;
+                statements.push(statement);
+            }
+            Some((token, range)) => {
+                return Err(Error::UnexpectedToken {
+                    found: token.to_string(),
+                    expected: "Expression token".to_string(),
+                    range: range.clone(),
+                })
+            }
+            None => break,
         }
 
         // TODO: Update/fix/change
@@ -192,6 +208,86 @@ fn parse_statements<'a>(mut iter: &mut TokenIter<'a>) -> Result<Vec<Stmt<'a>>, E
     }
 
     Ok(statements)
+}
+
+fn parse_infix<'src>(
+    mut iter: &mut TokenIter<'src>,
+    base: usize,
+    mut current: usize,
+) -> Result<Stmt<'src>, Error> {
+    matches(&iter.next(), Token::Infix)?;
+    consume_spaces(&mut iter);
+
+    let associativity = extract_associativity(&iter.next())?;
+    consume_spaces(&mut iter);
+
+    let precedence = extract_precendence(&iter.next())?;
+    consume_spaces(&mut iter);
+
+    matches(&iter.next(), Token::OpenParen)?;
+    let operator = extract_operator(&iter.next())?;
+    matches(&iter.next(), Token::CloseParen)?;
+    consume_spaces(&mut iter);
+
+    matches(&iter.next(), Token::Equals)?;
+    consume_spaces(&mut iter);
+
+    let function_name = extract_lower_name(&iter.next())?;
+
+    Ok(Stmt::Infix {
+        operator,
+        associativity,
+        precedence,
+        function_name,
+    })
+}
+
+fn extract_precendence<'a>(stream_token: &Option<SrcToken<'a>>) -> Result<usize, Error> {
+    match stream_token {
+        Some((Token::LiteralInteger(int), _range)) => {
+            usize::try_from(*int).map_err(|_| Error::NegativePrecendence)
+        }
+        Some((token, range)) => Err(Error::UnexpectedToken {
+            found: token.to_string(),
+            expected: Token::UpperName("").to_string(),
+            range: range.clone(),
+        }),
+        None => Err(Error::UnexpectedEnd),
+    }
+}
+
+fn parse_function_or_binding<'src>(
+    mut iter: &mut TokenIter<'src>,
+    base: usize,
+    mut current: usize,
+) -> Result<Stmt<'src>, Error> {
+    let name = extract_lower_name(&iter.next())?;
+    consume_spaces(&mut iter);
+
+    let mut args = Vec::new();
+    loop {
+        if !matches!(iter.peek(), Some((Token::LowerName(_), _range))) {
+            break;
+        }
+
+        let arg = extract_pattern_name(&iter.next())?;
+        args.push(arg);
+
+        consume_spaces(&mut iter);
+    }
+
+    matches(&iter.next(), Token::Equals)?;
+
+    let indent = indent::consume_to_indented(&mut iter, base, current)?;
+    current = indent.extract();
+
+    let (expr, _curr) = parse_expression(&mut iter, current, current)?;
+
+    if args.is_empty() {
+        Ok(Stmt::Binding { name, expr })
+    } else {
+        Ok(Stmt::Function { name, args, expr })
+    }
 }
 
 // Expressions
@@ -281,7 +377,7 @@ fn process_stacks<'a>(
     mut operator_stack: &mut Vec<&'a str>,
     mut operand_stack: &mut Vec<Expr<'a>>,
 ) -> Result<(), Error> {
-    if has_greater_precendence(operator, &operator_stack)? {
+    if has_greater_precedence(operator, &operator_stack)? {
         operator_stack.push(operator);
     } else {
         let right_hand_expr = operand_stack.pop().ok_or(Error::NoOperand)?;
@@ -300,18 +396,18 @@ fn process_stacks<'a>(
     Ok(())
 }
 
-fn has_greater_precendence<'a>(
+fn has_greater_precedence<'a>(
     operator_a: &'a str,
     operator_stack: &Vec<&'a str>,
 ) -> Result<bool, Error> {
     if operator_stack.is_empty() {
         Ok(true)
     } else {
-        let precedence_a = precendence(operator_a)?;
+        let precedence_a = precedence(operator_a)?;
         let precedence_b = operator_stack
             .last()
             .ok_or(Error::EmptyOperatorStack)
-            .and_then(|op| precendence(op))?;
+            .and_then(|op| precedence(op))?;
 
         Ok(precedence_a > precedence_b)
     }
@@ -322,7 +418,7 @@ fn has_greater_precendence<'a>(
 //   - http://faq.elm-community.org/operators.html
 //   - https://github.com/elm-lang/core/blob/master/src/Basics.elm#L72-L90
 //
-fn precendence<'a>(operator: &'a str) -> Result<usize, Error> {
+fn precedence<'a>(operator: &'a str) -> Result<usize, Error> {
     match operator {
         "*" | "/" => Ok(7),
         "+" | "-" => Ok(6),
@@ -401,7 +497,7 @@ fn parse_var_or_call<'a>(
     base: usize,
     mut current: usize,
 ) -> Result<(Expr<'a>, usize), Error> {
-    let name = extract_var_name(&iter.next())?;
+    let name = extract_lower_name(&iter.next())?;
 
     // We have to keep parsing to look for more parts to this expression but if we find a change in
     // indentation that indicates the end of the scope for this expression then we just want to
@@ -529,7 +625,7 @@ fn extract_upper_name<'a>(stream_token: &Option<SrcToken<'a>>) -> Result<&'a str
     }
 }
 
-fn extract_var_name<'a>(stream_token: &Option<SrcToken<'a>>) -> Result<&'a str, Error> {
+fn extract_lower_name<'a>(stream_token: &Option<SrcToken<'a>>) -> Result<&'a str, Error> {
     match stream_token {
         Some((Token::LowerName(name), _range)) => Ok(name),
         Some((token, range)) => Err(Error::UnexpectedToken {

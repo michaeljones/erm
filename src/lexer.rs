@@ -39,6 +39,8 @@ pub enum Token<'src> {
     Then,
     #[token("else")]
     Else,
+    #[token("infix")]
+    Infix,
 
     // Open & Close
     #[token("(")]
