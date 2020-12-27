@@ -1,6 +1,7 @@
 mod indent;
 
 use std::convert::TryFrom;
+use std::rc::Rc;
 
 use lexer::{Range, SrcToken, Token, TokenIter};
 
@@ -8,7 +9,7 @@ use lexer::{Range, SrcToken, Token, TokenIter};
 pub struct Module<'a> {
     name: &'a str,
     imports: Vec<Import<'a>>,
-    pub statements: Vec<Stmt<'a>>,
+    pub statements: Vec<Rc<Stmt<'a>>>,
 }
 
 #[derive(Debug)]
@@ -20,22 +21,22 @@ pub struct Import<'a> {
 pub enum Stmt<'a> {
     Binding {
         name: &'a str,
-        expr: Expr<'a>,
+        expr: Rc<Expr<'a>>,
     },
     Function {
         name: &'a str,
         args: Vec<Pattern<'a>>,
-        expr: Expr<'a>,
+        expr: Rc<Expr<'a>>,
     },
     Infix {
-        operator: &'a str,
+        operator_name: &'a str,
         associativity: Associativity,
         precedence: usize,
         function_name: &'a str,
     },
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum Associativity {
     Left,
     Right,
@@ -67,20 +68,20 @@ pub enum Expr<'a> {
     Integer(i32),
     Float(f32),
     String(&'a str),
-    List(Vec<Expr<'a>>),
+    List(Vec<Rc<Expr<'a>>>),
     BinOp {
         operator: &'a str,
-        left: Box<Expr<'a>>,
-        right: Box<Expr<'a>>,
+        left: Rc<Expr<'a>>,
+        right: Rc<Expr<'a>>,
     },
     If {
-        condition: Box<Expr<'a>>,
-        then_branch: Box<Expr<'a>>,
-        else_branch: Box<Expr<'a>>,
+        condition: Rc<Expr<'a>>,
+        then_branch: Rc<Expr<'a>>,
+        else_branch: Rc<Expr<'a>>,
     },
     Call {
         function_name: &'a str,
-        args: Vec<Expr<'a>>,
+        args: Vec<Rc<Expr<'a>>>,
     },
     VarName(&'a str),
 }
@@ -177,7 +178,7 @@ fn parse_imports<'a>(mut iter: &mut TokenIter<'a>) -> Result<Vec<Import<'a>>, Er
 }
 
 // Statements
-fn parse_statements<'a>(mut iter: &mut TokenIter<'a>) -> Result<Vec<Stmt<'a>>, Error> {
+fn parse_statements<'a>(mut iter: &mut TokenIter<'a>) -> Result<Vec<Rc<Stmt<'a>>>, Error> {
     let mut statements = vec![];
 
     let base = 0;
@@ -187,11 +188,11 @@ fn parse_statements<'a>(mut iter: &mut TokenIter<'a>) -> Result<Vec<Stmt<'a>>, E
         match iter.peek() {
             Some((Token::LowerName(_), _range)) => {
                 let statement = parse_function_or_binding(&mut iter, base, current)?;
-                statements.push(statement);
+                statements.push(Rc::new(statement));
             }
             Some((Token::Infix, _range)) => {
                 let statement = parse_infix(&mut iter, base, current)?;
-                statements.push(statement);
+                statements.push(Rc::new(statement));
             }
             Some((token, range)) => {
                 return Err(Error::UnexpectedToken {
@@ -225,7 +226,7 @@ fn parse_infix<'src>(
     consume_spaces(&mut iter);
 
     matches(&iter.next(), Token::OpenParen)?;
-    let operator = extract_operator(&iter.next())?;
+    let operator_name = extract_operator(&iter.next())?;
     matches(&iter.next(), Token::CloseParen)?;
     consume_spaces(&mut iter);
 
@@ -235,7 +236,7 @@ fn parse_infix<'src>(
     let function_name = extract_lower_name(&iter.next())?;
 
     Ok(Stmt::Infix {
-        operator,
+        operator_name,
         associativity,
         precedence,
         function_name,
@@ -284,9 +285,16 @@ fn parse_function_or_binding<'src>(
     let (expr, _curr) = parse_expression(&mut iter, current, current)?;
 
     if args.is_empty() {
-        Ok(Stmt::Binding { name, expr })
+        Ok(Stmt::Binding {
+            name,
+            expr: Rc::new(expr),
+        })
     } else {
-        Ok(Stmt::Function { name, args, expr })
+        Ok(Stmt::Function {
+            name,
+            args,
+            expr: Rc::new(expr),
+        })
     }
 }
 
@@ -360,8 +368,8 @@ fn parse_binary_expression<'a, 'b>(
 
         operand_stack.push(Expr::BinOp {
             operator,
-            left: Box::new(left_hand_expr),
-            right: Box::new(right_hand_expr),
+            left: Rc::new(left_hand_expr),
+            right: Rc::new(right_hand_expr),
         })
     }
 
@@ -386,8 +394,8 @@ fn process_stacks<'a>(
 
         operand_stack.push(Expr::BinOp {
             operator: stored_operator,
-            left: Box::new(left_hand_expr),
-            right: Box::new(right_hand_expr),
+            left: Rc::new(left_hand_expr),
+            right: Rc::new(right_hand_expr),
         });
 
         process_stacks(operator, &mut operator_stack, &mut operand_stack)?;
@@ -524,7 +532,7 @@ fn parse_var_or_call<'a>(
 
         let (argument_expr, curr) = parse_singular_expression(&mut iter, base, current)?;
         current = curr;
-        args.push(argument_expr);
+        args.push(Rc::new(argument_expr));
 
         // Similar to above, we consume the expression on the right hand side of the operator and
         // then any whitespace afterwards (to reach the next operator if there is one) but if we
@@ -576,9 +584,9 @@ fn parse_if_expression<'a>(
 
     Ok((
         Expr::If {
-            condition: Box::new(condition),
-            then_branch: Box::new(then_branch),
-            else_branch: Box::new(else_branch),
+            condition: Rc::new(condition),
+            then_branch: Rc::new(then_branch),
+            else_branch: Rc::new(else_branch),
         },
         current,
     ))

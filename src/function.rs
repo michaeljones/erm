@@ -11,9 +11,9 @@ pub enum Error {
 }
 
 #[derive(Clone)]
-pub enum Function<'a> {
+pub enum Function<'src> {
     BuiltIn(Rc<dyn Func>),
-    UserDefined(&'a Stmt<'a>),
+    UserDefined(Rc<Stmt<'src>>),
 }
 
 pub trait Func {

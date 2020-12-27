@@ -14,12 +14,14 @@ pub enum Error {
     UnhandledExpression(String),
     FailedToUnify,
     UnknownFunction(String),
+    UnknownOperator(String),
     TooManyArguments,
 }
 
-pub fn check<'src>(module: &Module<'src>) -> Result<(), Error> {
+pub fn check<'src>(module: &Module<'src>, scopes: &env::Scopes<'src>) -> Result<(), Error> {
     let scope = env::Scope::from_module(&module);
-    let scopes = vector![Rc::new(scope)];
+    let scopes = env::add_scope(&scopes, scope);
+
     // let mut var_generator = VarGenerator::new();
     match env::get_binding(&scopes, "main") {
         Some(expr) => {
@@ -48,9 +50,9 @@ pub fn check<'src>(module: &Module<'src>) -> Result<(), Error> {
     }
 }
 
-fn expression_to_term<'a, 'src>(
-    expr: &'src Expr<'src>,
-    scopes: &'a env::Scopes<'src>,
+fn expression_to_term<'a, 'b, 'src>(
+    expr: &'a Expr<'src>,
+    scopes: &'b env::Scopes<'src>,
 ) -> Result<Term, Error> {
     match expr {
         Expr::Bool(_) => Ok(Term::Constant(Value::Bool)),
@@ -60,28 +62,59 @@ fn expression_to_term<'a, 'src>(
             function_name,
             args,
         } => call_to_term(function_name, args, &scopes),
+
+        Expr::BinOp {
+            operator,
+            left,
+            right,
+        } => binary_expression_to_term(operator, left, right, &scopes),
         _ => Err(Error::UnhandledExpression(format!("{:?}", expr))),
     }
 }
 
-fn call_to_term<'a, 'src>(
+fn binary_expression_to_term<'a, 'b, 'src>(
+    operator_name: &'src str,
+    left: &Rc<Expr<'src>>,
+    right: &Rc<Expr<'src>>,
+    scopes: &'b env::Scopes<'src>,
+) -> Result<Term, Error> {
+    if let Some(operator) = env::get_operator(&scopes, operator_name) {
+        match env::get_function(&scopes, operator.function_name) {
+            Some(Function::UserDefined(stmt_rc)) => match &*stmt_rc {
+                Stmt::Function { expr, .. } => expression_to_term(&expr, &scopes),
+                _ => Err(Error::UnknownOperator(operator_name.to_string())),
+            },
+            Some(Function::BuiltIn(func)) => {
+                let args = vec![left.clone(), right.clone()];
+                built_in_to_term(func, &args, &scopes)
+            }
+            _ => Err(Error::UnknownFunction(operator.function_name.to_string())),
+        }
+    } else {
+        Err(Error::UnknownOperator(operator_name.to_string()))
+    }
+}
+
+fn call_to_term<'a, 'b, 'src>(
     function_name: &'src str,
-    args: &'src Vec<Expr<'src>>,
-    scopes: &'a env::Scopes<'src>,
+    args: &'a Vec<Rc<Expr<'src>>>,
+    scopes: &'b env::Scopes<'src>,
 ) -> Result<Term, Error> {
     match env::get_function(&scopes, function_name) {
-        Some(Function::UserDefined(Stmt::Function { .. })) => {
-            Err(Error::UnknownFunction(function_name.to_string()))
-        }
+        Some(Function::UserDefined(stmt_rc)) => match *stmt_rc {
+            Stmt::Function { .. } => Err(Error::UnknownFunction(function_name.to_string())),
+            _ => Err(Error::UnknownFunction(function_name.to_string())),
+        },
+
         Some(Function::BuiltIn(func)) => built_in_to_term(func, args, &scopes),
         _ => Err(Error::UnknownFunction(function_name.to_string())),
     }
 }
 
-fn built_in_to_term<'a, 'src>(
+fn built_in_to_term<'a, 'b, 'src>(
     func: Rc<dyn Func>,
-    args: &'src Vec<Expr<'src>>,
-    scopes: &'a env::Scopes<'src>,
+    args: &'b Vec<Rc<Expr<'src>>>,
+    scopes: &'b env::Scopes<'src>,
 ) -> Result<Term, Error> {
     let signature = func.term();
 

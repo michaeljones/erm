@@ -1,3 +1,5 @@
+#[macro_use]
+extern crate im;
 extern crate codespan_reporting;
 extern crate erm;
 extern crate logos;
@@ -7,9 +9,11 @@ use codespan_reporting::diagnostic::{Diagnostic, Label};
 use codespan_reporting::files::SimpleFiles;
 use codespan_reporting::term;
 use codespan_reporting::term::termcolor::Buffer;
+use std::rc::Rc;
 use unindent::unindent;
 
 use erm::checker;
+use erm::env;
 use erm::evaluater;
 use erm::evaluater::values::Value;
 use erm::lexer::Range;
@@ -54,18 +58,26 @@ fn pretty_print(result: &Result<Value, Error>) -> String {
 
 fn eval(string: &str) -> Result<Value, Error> {
     let src = unindent(&string);
-    let _basics =
+    let basics =
         erm::parse_basics().map_err(|err| Error::ParserError(err, erm::basics_source()))?;
     let module = erm::parse_source(&src).map_err(|err| Error::ParserError(err, string))?;
-    checker::check(&module).map_err(Error::CheckError)?;
-    evaluater::evaluate(&module, Vec::new()).map_err(Error::EvaluateError)
+
+    let scope = env::Scope::from_module(&basics);
+    let scopes = vector![Rc::new(scope)];
+    checker::check(&module, &scopes).map_err(Error::CheckError)?;
+    evaluater::evaluate(&module, &Vec::new(), &scopes).map_err(Error::EvaluateError)
 }
 
 fn eval_with_args(string: &str, args: Vec<String>) -> Result<Value, Error> {
     let src = unindent(&string);
+    let basics =
+        erm::parse_basics().map_err(|err| Error::ParserError(err, erm::basics_source()))?;
     let module = erm::parse_source(&src).map_err(|err| Error::ParserError(err, string))?;
-    checker::check(&module).map_err(Error::CheckError)?;
-    evaluater::evaluate(&module, args).map_err(Error::EvaluateError)
+
+    let scope = env::Scope::from_module(&basics);
+    let scopes = vector![Rc::new(scope)];
+    checker::check(&module, &scopes).map_err(Error::CheckError)?;
+    evaluater::evaluate(&module, &args, &scopes).map_err(Error::EvaluateError)
 }
 
 #[test]
