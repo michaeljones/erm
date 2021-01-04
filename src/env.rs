@@ -1,8 +1,9 @@
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use super::function::{Function, StringFromInt};
-use super::parser::{Associativity, Expr, Module, Stmt};
+use super::builtins;
+use super::function::Binding;
+use super::parser::{Associativity, Module, Stmt};
 
 #[derive(Debug, Clone)]
 pub struct Operator<'src> {
@@ -12,13 +13,12 @@ pub struct Operator<'src> {
     pub function_name: &'src str,
 }
 
-type Bindings<'src> = HashMap<String, Rc<Expr<'src>>>;
-type Functions<'src> = HashMap<String, Function<'src>>;
+pub type Bindings<'src> = HashMap<String, Binding<'src>>;
 type Operators<'src> = HashMap<String, Operator<'src>>;
 
+#[derive(Debug)]
 pub struct Scope<'src> {
     pub bindings: Bindings<'src>,
-    pub functions: Functions<'src>,
     pub operators: Operators<'src>,
 }
 
@@ -30,15 +30,12 @@ impl<'src> Scope<'src> {
             .statements
             .iter()
             .flat_map(|entry| match &**entry {
-                Stmt::Binding { name, expr } => Some((name.to_string(), expr.clone())),
-                _ => None,
-            })
-            .collect();
-
-        let functions = module
-            .statements
-            .iter()
-            .flat_map(|entry| match entry {
+                Stmt::Binding { name, expr } => {
+                    Some((name.to_string(), Binding::UserBinding(expr.clone())))
+                }
+                Stmt::Function { name, .. } => {
+                    Some((name.to_string(), Binding::UserFunc(entry.clone())))
+                }
                 _ => None,
             })
             .collect();
@@ -67,7 +64,6 @@ impl<'src> Scope<'src> {
 
         Scope {
             bindings,
-            functions,
             operators,
         }
     }
@@ -75,23 +71,30 @@ impl<'src> Scope<'src> {
     pub fn from_bindings(bindings: Bindings<'src>) -> Self {
         Scope {
             bindings,
-            functions: HashMap::new(),
             operators: HashMap::new(),
         }
     }
 }
 
-pub fn get_function<'a, 'b, 'src>(
-    scopes: &'b Scopes<'src>,
-    target_name: &str,
-) -> Option<Function<'src>> {
+pub fn get_binding<'src>(scopes: &Scopes<'src>, target_name: &str) -> Option<Binding<'src>> {
     match target_name {
-        "stringFromInt" => return Some(Function::BuiltIn(Rc::new(StringFromInt {}))),
+        "stringFromInt" => return Some(Binding::BuiltInFunc(Rc::new(builtins::StringFromInt {}))),
+        "stringFromBool" => {
+            return Some(Binding::BuiltInFunc(Rc::new(builtins::StringFromBool {})))
+        }
+        "Elm.Kernel.Basics.add" => return Some(Binding::BuiltInFunc(Rc::new(builtins::Add {}))),
+        "Elm.Kernel.Basics.sub" => return Some(Binding::BuiltInFunc(Rc::new(builtins::Sub {}))),
+        "Elm.Kernel.Basics.mul" => return Some(Binding::BuiltInFunc(Rc::new(builtins::Mul {}))),
+        "Elm.Kernel.Basics.gt" => return Some(Binding::BuiltInFunc(Rc::new(builtins::Gt {}))),
+        "Elm.Kernel.Basics.lt" => return Some(Binding::BuiltInFunc(Rc::new(builtins::Lt {}))),
+        "Elm.Kernel.Basics.append" => {
+            return Some(Binding::BuiltInFunc(Rc::new(builtins::Append {})))
+        }
         _ => {}
     }
 
     for scope in scopes {
-        if let Some(value) = scope.functions.get(target_name) {
+        if let Some(value) = scope.bindings.get(target_name) {
             return Some(value.clone());
         }
     }
@@ -109,6 +112,7 @@ pub fn get_operator<'a, 'src>(scopes: &Scopes<'src>, target_name: &str) -> Optio
     None
 }
 
+/*
 pub fn get_binding<'src>(scopes: &Scopes<'src>, target_name: &str) -> Option<Rc<Expr<'src>>> {
     for scope in scopes {
         if let Some(value) = scope.bindings.get(target_name) {
@@ -131,6 +135,7 @@ pub fn get_binding<'src>(scopes: &Scopes<'src>, target_name: &str) -> Option<Rc<
     })
     */
 }
+*/
 
 pub fn add_scope<'a, 'b>(scopes: &Scopes<'b>, new_scope: Scope<'b>) -> Scopes<'b> {
     let mut new_scopes = scopes.clone();

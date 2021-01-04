@@ -3,7 +3,8 @@ mod indent;
 use std::convert::TryFrom;
 use std::rc::Rc;
 
-use lexer::{Range, SrcToken, Token, TokenIter};
+use crate::checker::term;
+use crate::lexer::{Range, SrcToken, Token, TokenIter};
 
 #[derive(Debug)]
 pub struct Module<'a> {
@@ -60,6 +61,20 @@ fn extract_associativity<'a>(stream_token: &Option<SrcToken<'a>>) -> Result<Asso
 #[derive(Debug)]
 pub enum Pattern<'a> {
     Name(&'a str),
+}
+
+impl<'a> Pattern<'a> {
+    pub fn names(&self) -> Vec<String> {
+        match self {
+            Pattern::Name(name) => vec![name.to_string()],
+        }
+    }
+
+    pub fn term(&self) -> term::Term {
+        match self {
+            Pattern::Name(name) => term::Term::Var(name.to_string()),
+        }
+    }
 }
 
 #[derive(Debug)]

@@ -5,7 +5,7 @@ use std::rc::Rc;
 use self::values::Value;
 use super::env;
 use super::function;
-use super::function::Function;
+use super::function::Binding;
 use super::parser::{Expr, Module, Pattern, Stmt};
 
 #[derive(Debug, PartialEq)]
@@ -26,7 +26,7 @@ pub fn evaluate<'src>(
         let scope = env::Scope::from_module(&module);
         let scopes = env::add_scope(&scopes, scope);
         match env::get_binding(&scopes, "main") {
-            Some(expr) => evaluate_expression(&expr, &scopes),
+            Some(Binding::UserBinding(expr)) => evaluate_expression(&expr, &scopes),
             _ => Err(Error::UnknownBinding("main".to_string())),
         }
     } else {
@@ -75,7 +75,10 @@ fn evaluate_expression<'src>(
         } => evaluate_function_call(function_name, args, &scopes),
         Expr::VarName(name) => env::get_binding(&scopes, name)
             .ok_or(Error::UnknownBinding(name.to_string()))
-            .and_then(|expr| evaluate_expression(&*expr, &scopes)),
+            .and_then(|binding| match binding {
+                Binding::UserBinding(expr) => evaluate_expression(&expr, &scopes),
+                _ => Err(Error::UnknownBinding(name.to_string())),
+            }),
     }
 }
 
@@ -84,8 +87,8 @@ fn evaluate_function_call<'a, 'b, 'src: 'd, 'd>(
     arg_exprs: &Vec<Rc<Expr<'src>>>,
     scopes: &env::Scopes<'d>,
 ) -> Result<Value, Error> {
-    match env::get_function(&scopes, name) {
-        Some(Function::UserDefined(stmt_rc)) => match &*stmt_rc {
+    match env::get_binding(&scopes, name) {
+        Some(Binding::UserFunc(stmt_rc)) => match &*stmt_rc {
             Stmt::Function { args, expr, .. } => {
                 if arg_exprs.len() != args.len() {
                     Err(Error::WrongArity)
@@ -93,7 +96,9 @@ fn evaluate_function_call<'a, 'b, 'src: 'd, 'd>(
                     let arg_scope = env::Scope::from_bindings(
                         args.iter()
                             .zip(arg_exprs.iter())
-                            .map(|(Pattern::Name(name), expr)| (name.to_string(), expr.clone()))
+                            .map(|(Pattern::Name(name), expr)| {
+                                (name.to_string(), Binding::UserBinding(expr.clone()))
+                            })
                             .collect(),
                     );
 
@@ -103,7 +108,7 @@ fn evaluate_function_call<'a, 'b, 'src: 'd, 'd>(
             }
             _ => Err(Error::UnknownFunction(name.to_string())),
         },
-        Some(Function::BuiltIn(func)) => {
+        Some(Binding::BuiltInFunc(func)) => {
             let arg_values = arg_exprs
                 .iter()
                 .map(|expr| evaluate_expression(&expr, &scopes))

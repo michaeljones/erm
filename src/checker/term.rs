@@ -10,5 +10,5 @@ pub enum Value {
 pub enum Term {
     Constant(Value),
     Var(String),
-    Function { name: String, signature: Vec<Term> },
+    Function(Box<Term>, Box<Term>),
 }

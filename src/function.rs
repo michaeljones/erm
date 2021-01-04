@@ -2,7 +2,7 @@ use std::rc::Rc;
 
 use super::checker::term;
 use super::evaluater::values;
-use super::parser::Stmt;
+use super::parser::{Expr, Stmt};
 
 #[derive(Debug, PartialEq)]
 pub enum Error {
@@ -11,34 +11,22 @@ pub enum Error {
 }
 
 #[derive(Clone)]
-pub enum Function<'src> {
-    BuiltIn(Rc<dyn Func>),
-    UserDefined(Rc<Stmt<'src>>),
+pub enum Binding<'src> {
+    BuiltInFunc(Rc<dyn Func>),
+    UserFunc(Rc<Stmt<'src>>),
+    UserBinding(Rc<Expr<'src>>),
+    UserArg(term::Term),
+}
+
+impl<'src> std::fmt::Debug for Binding<'src> {
+    // Implemented because we can't derive Debug for 'dyn Func'
+    // TODO: Add more detail
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Binding")
+    }
 }
 
 pub trait Func {
     fn call<'a>(&self, args: Vec<values::Value>) -> Result<values::Value, Error>;
-    fn term(&self) -> Vec<term::Term>;
-}
-
-pub struct StringFromInt {}
-
-impl Func for StringFromInt {
-    fn call<'a>(&self, args: Vec<values::Value>) -> Result<values::Value, Error> {
-        if args.len() != 1 {
-            return Err(Error::WrongArity);
-        }
-
-        match args.first() {
-            Some(values::Value::Integer(int)) => Ok(values::Value::String(int.to_string())),
-            _ => Err(Error::WrongArgumentType),
-        }
-    }
-
-    fn term(&self) -> Vec<term::Term> {
-        vec![
-            term::Term::Constant(term::Value::Integer),
-            term::Term::Constant(term::Value::String),
-        ]
-    }
+    fn term(&self) -> term::Term;
 }

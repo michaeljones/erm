@@ -1,9 +1,9 @@
-#[macro_use]
 extern crate im;
 extern crate logos;
 
 use logos::Logos;
 
+pub mod builtins;
 pub mod checker;
 pub mod env;
 pub mod evaluater;
