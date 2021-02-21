@@ -10,5 +10,6 @@ pub enum Value {
 pub enum Term {
     Constant(Value),
     Var(String),
+    Type(String, Vec<Term>),
     Function(Box<Term>, Box<Term>),
 }

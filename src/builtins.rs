@@ -25,7 +25,7 @@ impl Func for StringFromInt {
     }
 }
 
-// stringFromInt
+// stringFromBool
 pub struct StringFromBool {}
 
 impl Func for StringFromBool {
@@ -43,6 +43,44 @@ impl Func for StringFromBool {
     fn term(&self) -> term::Term {
         term::Term::Function(
             Box::new(term::Term::Constant(term::Value::Bool)),
+            Box::new(term::Term::Constant(term::Value::String)),
+        )
+    }
+}
+
+// stringJoin
+pub struct StringJoin {}
+
+impl Func for StringJoin {
+    fn call<'a>(&self, args: Vec<values::Value>) -> Result<values::Value, Error> {
+        if args.len() != 1 {
+            return Err(Error::WrongArity);
+        }
+
+        match args.first() {
+            Some(values::Value::List(entries)) => Ok(values::Value::String(
+                entries
+                    .iter()
+                    .flat_map(|value| {
+                        if let values::Value::String(string) = value {
+                            Some(string.clone())
+                        } else {
+                            None
+                        }
+                    })
+                    .collect::<Vec<String>>()
+                    .join(""),
+            )),
+            _ => Err(Error::WrongArgumentType),
+        }
+    }
+
+    fn term(&self) -> term::Term {
+        term::Term::Function(
+            Box::new(term::Term::Type(
+                "List".to_string(),
+                vec![term::Term::Constant(term::Value::String)],
+            )),
             Box::new(term::Term::Constant(term::Value::String)),
         )
     }

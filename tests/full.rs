@@ -256,12 +256,12 @@ fn main_args() {
     let src = r#"
         module Main exposing (..)
         main args =
-          args
+          stringJoin args
         "#;
-    let result = eval_with_args(src, vec!["Hello".to_string()]);
+    let result = eval_with_args(src, vec!["Hello".to_string(), " world".to_string()]);
     assert_eq!(
         result,
-        Ok(Value::List(vec![Value::String("Hello".to_string())])),
+        Ok(string("Hello world")),
         "{}",
         pretty_print(&result)
     );

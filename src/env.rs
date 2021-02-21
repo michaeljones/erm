@@ -82,6 +82,7 @@ pub fn get_binding<'src>(scopes: &Scopes<'src>, target_name: &str) -> Option<Bin
         "stringFromBool" => {
             return Some(Binding::BuiltInFunc(Rc::new(builtins::StringFromBool {})))
         }
+        "stringJoin" => return Some(Binding::BuiltInFunc(Rc::new(builtins::StringJoin {}))),
         "Elm.Kernel.Basics.add" => return Some(Binding::BuiltInFunc(Rc::new(builtins::Add {}))),
         "Elm.Kernel.Basics.sub" => return Some(Binding::BuiltInFunc(Rc::new(builtins::Sub {}))),
         "Elm.Kernel.Basics.mul" => return Some(Binding::BuiltInFunc(Rc::new(builtins::Mul {}))),

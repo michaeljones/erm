@@ -51,7 +51,49 @@ pub fn check<'src>(module: &Module<'src>, scopes: &env::Scopes<'src>) -> Result<
                 .map(|_| ())
                 .map_err(Error::UnifyError)
         }
-        _ => Err(Error::UnknownBinding("main".to_string())),
+        Some(Binding::UserFunc(stmt_rc)) => match &*stmt_rc {
+            Stmt::Function { expr, args, .. } => {
+                println!("matched function");
+
+                let mut bindings = env::Bindings::new();
+                for arg in args {
+                    for name in arg.names() {
+                        bindings.insert(name.clone(), Binding::UserArg(Term::Var(name.clone())));
+                    }
+                }
+                let scope = env::Scope::from_bindings(bindings);
+                // TODO: The called function should probably not have the scope of the callee but
+                // rather than scope of where it was parsed
+                let scopes = env::add_scope(&scopes, scope);
+
+                let body_term = expression_to_term(&expr, &scopes)?;
+                let main_term = Term::Function(
+                    Box::new(Term::Type(
+                        "List".to_string(),
+                        vec![Term::Constant(Value::String)],
+                    )),
+                    Box::new(body_term),
+                );
+
+                let target_term = Term::Function(
+                    Box::new(Term::Type(
+                        "List".to_string(),
+                        vec![Term::Constant(Value::String)],
+                    )),
+                    Box::new(Term::Constant(Value::String)),
+                );
+
+                let subs = unify::Substitutions::new();
+                unify::unify(&main_term, &target_term, &subs)
+                    .map(|_| ())
+                    .map_err(Error::UnifyError)
+            }
+            _ => Err(Error::UnknownBinding("main".to_string())),
+        },
+        entry => {
+            println!("entry {:?}", entry);
+            Err(Error::UnknownBinding("main".to_string()))
+        }
     }
 }
 

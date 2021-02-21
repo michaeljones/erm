@@ -11,7 +11,7 @@ use super::parser::{Expr, Module, Pattern, Stmt};
 #[derive(Debug, PartialEq)]
 pub enum Error {
     UnsupportedOperation,
-    UnknownFunction(String),
+    UnknownFunction(String, u32),
     UnknownBinding(String),
     FunctionError(function::Error),
     WrongArity,
@@ -22,9 +22,9 @@ pub fn evaluate<'src>(
     args: &'src Vec<String>,
     scopes: &env::Scopes<'src>,
 ) -> Result<Value, Error> {
+    let scope = env::Scope::from_module(&module);
+    let scopes = env::add_scope(&scopes, scope);
     if args.is_empty() {
-        let scope = env::Scope::from_module(&module);
-        let scopes = env::add_scope(&scopes, scope);
         match env::get_binding(&scopes, "main") {
             Some(Binding::UserBinding(expr)) => evaluate_expression(&expr, &scopes),
             _ => Err(Error::UnknownBinding("main".to_string())),
@@ -106,7 +106,7 @@ fn evaluate_function_call<'a, 'b, 'src: 'd, 'd>(
                     evaluate_expression(&expr, &new_scope)
                 }
             }
-            _ => Err(Error::UnknownFunction(name.to_string())),
+            _ => Err(Error::UnknownFunction(name.to_string(), line!())),
         },
         Some(Binding::BuiltInFunc(func)) => {
             let arg_values = arg_exprs
@@ -116,7 +116,10 @@ fn evaluate_function_call<'a, 'b, 'src: 'd, 'd>(
 
             func.call(arg_values).map_err(Error::FunctionError)
         }
-        _ => Err(Error::UnknownFunction(name.to_string())),
+        entry => {
+            println!("{:?}", entry);
+            Err(Error::UnknownFunction(name.to_string(), line!()))
+        }
     }
 }
 
