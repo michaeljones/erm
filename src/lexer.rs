@@ -3,10 +3,13 @@ use logos::{Lexer, Logos};
 pub type Range = std::ops::Range<usize>;
 
 #[allow(dead_code)]
-pub type SrcToken<'a> = (Token<'a>, Range);
+pub type SrcToken<'src> = (Token<'src>, Range);
+
+#[allow(dead_code)]
+pub type TokenIter<'src> = std::iter::Peekable<logos::SpannedIter<'src, Token<'src>>>;
 
 #[derive(Logos, Debug, PartialEq, Clone)]
-pub enum Token<'a> {
+pub enum Token<'src> {
     // Keywords
     #[token("module")]
     Module,
@@ -36,6 +39,8 @@ pub enum Token<'a> {
     Then,
     #[token("else")]
     Else,
+    #[token("infix")]
+    Infix,
 
     // Open & Close
     #[token("(")]
@@ -86,23 +91,23 @@ pub enum Token<'a> {
     RightArrow,
 
     // Names
-    #[regex("[A-Z][a-zA-Z0-9]*")]
-    UpperName(&'a str),
+    #[regex("([A-Z][a-zA-Z0-9]*\\.)*([A-Z][a-zA-Z0-9])")]
+    UpperName(&'src str),
 
-    #[regex("[a-z_][a-zA-Z0-9]*")]
-    LowerName(&'a str),
+    #[regex("([A-Z][a-zA-Z0-9]*\\.)*[a-z_][a-zA-Z0-9]*")]
+    LowerName(&'src str),
 
     #[regex(r#"[+><!*-:|]+"#)]
-    Operator(&'a str),
+    Operator(&'src str),
 
     #[regex("--[^\n]*")]
-    SingleLineComment(&'a str),
+    SingleLineComment(&'src str),
 
     #[regex(r#"\{-(?:[^-]|\-[^}])*\-}"#)]
-    MultiLineComment(&'a str),
+    MultiLineComment(&'src str),
 
     #[regex(r#"\[glsl\|(?:[^|]|\|[^]])*\|]"#)]
-    WebGL(&'a str),
+    WebGL(&'src str),
 
     #[regex("-?[0-9]+", |lex| lex.slice().parse::<i32>(), priority = 2)]
     LiteralInteger(i32),
@@ -111,22 +116,22 @@ pub enum Token<'a> {
     LiteralFloat(f32),
 
     #[regex(r#""([^"])*""#, string_contents)]
-    LiteralString(&'a str),
+    LiteralString(&'src str),
 
     #[regex(r#"'[^']'"#, string_contents)]
-    LiteralChar(&'a str),
+    LiteralChar(&'src str),
 
     // Error
     #[error]
     Error,
 }
 
-fn string_contents<'a>(lex: &mut Lexer<'a, Token<'a>>) -> Option<&'a str> {
+fn string_contents<'src>(lex: &mut Lexer<'src, Token<'src>>) -> Option<&'src str> {
     let slice = lex.slice();
     Some(&slice[1..slice.len() - 1])
 }
 
-impl<'a> std::fmt::Display for Token<'a> {
+impl<'src> std::fmt::Display for Token<'src> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{:?}", self)
     }

@@ -1,6 +1,7 @@
+#[macro_use]
+extern crate im;
 extern crate clap;
 extern crate erm;
-extern crate im;
 extern crate logos;
 extern crate regex;
 extern crate walkdir;
@@ -12,7 +13,9 @@ use logos::Logos;
 // use std::ffi::OsStr;
 use std::fs::File;
 use std::io::prelude::*;
+use std::rc::Rc;
 
+use erm::env;
 use erm::evaluater;
 use erm::lexer::Token;
 use erm::parser;
@@ -41,7 +44,11 @@ fn dump_file(filename: &str, _quiet: bool) -> Result<(), Error> {
     println!("{:#?}", &module);
 
     let args = vec!["example_arg".to_string()];
-    evaluater::evaluate(&module, args).map_err(|err| {
+
+    let basics = erm::parse_basics().map_err(|_| Error::ParserError)?;
+    let scope = env::Scope::from_module(&basics);
+    let scopes = vector![Rc::new(scope)];
+    evaluater::evaluate(&module, &args, &scopes).map_err(|err| {
         println!("{:?}", &err);
         Error::EvaluateError
     })?;

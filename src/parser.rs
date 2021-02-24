@@ -1,10 +1,16 @@
-use lexer::{Range, SrcToken, Token};
+mod indent;
+
+use std::convert::TryFrom;
+use std::rc::Rc;
+
+use crate::checker::term;
+use crate::lexer::{Range, SrcToken, Token, TokenIter};
 
 #[derive(Debug)]
 pub struct Module<'a> {
     name: &'a str,
     imports: Vec<Import<'a>>,
-    pub statements: Vec<Stmt<'a>>,
+    pub statements: Vec<Rc<Stmt<'a>>>,
 }
 
 #[derive(Debug)]
@@ -16,18 +22,59 @@ pub struct Import<'a> {
 pub enum Stmt<'a> {
     Binding {
         name: &'a str,
-        expr: Expr<'a>,
+        expr: Rc<Expr<'a>>,
     },
     Function {
         name: &'a str,
         args: Vec<Pattern<'a>>,
-        expr: Expr<'a>,
+        expr: Rc<Expr<'a>>,
     },
+    Infix {
+        operator_name: &'a str,
+        associativity: Associativity,
+        precedence: usize,
+        function_name: &'a str,
+    },
+}
+
+#[derive(Clone, Debug)]
+pub enum Associativity {
+    Left,
+    Right,
+    Non,
+}
+
+fn extract_associativity<'a>(stream_token: &Option<SrcToken<'a>>) -> Result<Associativity, Error> {
+    match stream_token {
+        Some((Token::LowerName("left"), _range)) => Ok(Associativity::Left),
+        Some((Token::LowerName("right"), _range)) => Ok(Associativity::Right),
+        Some((Token::LowerName("non"), _range)) => Ok(Associativity::Non),
+        Some((token, range)) => Err(Error::UnexpectedToken {
+            found: token.to_string(),
+            expected: "LowerName with 'left', 'right', or 'non".to_string(),
+            range: range.clone(),
+        }),
+        None => Err(Error::UnexpectedEnd),
+    }
 }
 
 #[derive(Debug)]
 pub enum Pattern<'a> {
     Name(&'a str),
+}
+
+impl<'a> Pattern<'a> {
+    pub fn names(&self) -> Vec<String> {
+        match self {
+            Pattern::Name(name) => vec![name.to_string()],
+        }
+    }
+
+    pub fn term(&self) -> term::Term {
+        match self {
+            Pattern::Name(name) => term::Term::Var(name.to_string()),
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -36,20 +83,20 @@ pub enum Expr<'a> {
     Integer(i32),
     Float(f32),
     String(&'a str),
-    List(Vec<Expr<'a>>),
+    List(Vec<Rc<Expr<'a>>>),
     BinOp {
         operator: &'a str,
-        left: Box<Expr<'a>>,
-        right: Box<Expr<'a>>,
+        left: Rc<Expr<'a>>,
+        right: Rc<Expr<'a>>,
     },
     If {
-        condition: Box<Expr<'a>>,
-        then_branch: Box<Expr<'a>>,
-        else_branch: Box<Expr<'a>>,
+        condition: Rc<Expr<'a>>,
+        then_branch: Rc<Expr<'a>>,
+        else_branch: Rc<Expr<'a>>,
     },
     Call {
         function_name: &'a str,
-        args: Vec<Expr<'a>>,
+        args: Vec<Rc<Expr<'a>>>,
     },
     VarName(&'a str),
 }
@@ -70,11 +117,12 @@ pub enum Error {
     NoOperator,
     EmptyOperatorStack,
     UnknownOperator(String),
+    NegativePrecendence,
 }
 
-type TokenIter<'a> = std::iter::Peekable<logos::SpannedIter<'a, Token<'a>>>;
+pub type ParseResult<'src> = Result<Module<'src>, Error>;
 
-pub fn parse<'a>(mut iter: &mut TokenIter<'a>) -> Result<Module<'a>, Error> {
+pub fn parse<'src>(mut iter: &mut TokenIter<'src>) -> ParseResult<'src> {
     matches(&iter.next(), Token::Module)?;
     matches_space(&iter.next())?;
     let name = extract_upper_name(&iter.next())?;
@@ -144,275 +192,125 @@ fn parse_imports<'a>(mut iter: &mut TokenIter<'a>) -> Result<Vec<Import<'a>>, Er
     Ok(imports)
 }
 
-#[derive(Clone)]
-enum IndentStatus {
-    Inherited,
-    Fresh,
-}
-
-#[derive(Clone)]
-struct Indent {
-    count: usize,
-    status: IndentStatus,
-}
-
-impl Indent {
-    fn inherited(count: usize) -> Self {
-        Indent {
-            status: IndentStatus::Inherited,
-            count: count,
-        }
-    }
-
-    fn fresh(count: usize) -> Self {
-        Indent {
-            status: IndentStatus::Fresh,
-            count: count,
-        }
-    }
-
-    fn add(&mut self, count: usize) -> Self {
-        // Only add spaces if we've seen a new line
-        match self.status {
-            IndentStatus::Fresh => Indent {
-                count: self.count + count,
-                status: IndentStatus::Fresh,
-            },
-            _ => self.clone(),
-        }
-    }
-
-    fn indented_from(&self, base: usize) -> bool {
-        match self.status {
-            IndentStatus::Inherited => true,
-            IndentStatus::Fresh => self.count > base,
-        }
-    }
-
-    fn matching(&self, base: usize) -> bool {
-        match self.status {
-            IndentStatus::Inherited => true,
-            IndentStatus::Fresh => self.count == base,
-        }
-    }
-
-    fn at_least(&self, base: usize) -> bool {
-        match self.status {
-            IndentStatus::Inherited => true,
-            IndentStatus::Fresh => self.count >= base,
-        }
-    }
-
-    fn extract(&self) -> usize {
-        self.count
-    }
-}
-
-#[derive(Clone)]
-enum IndentScope {
-    In(usize),
-    Out(usize),
-}
-
-impl IndentScope {
-    fn in_scope(&self) -> bool {
-        match self {
-            IndentScope::In(_) => true,
-            IndentScope::Out(_) => false,
-        }
-    }
-    fn extract(&self) -> usize {
-        match self {
-            IndentScope::In(curr) => *curr,
-            IndentScope::Out(curr) => *curr,
-        }
-    }
-}
-
-/// For when we want to continue parsing the current expression if we find an indented line but if
-/// we move out to a shallower indent then we can see that and move to the next part of the parsing
-fn consume_to_indented<'b>(
-    iter: &mut TokenIter<'b>,
-    base: usize,
-    start: usize,
-) -> Result<IndentScope, Error> {
-    let mut current = Indent::inherited(start);
-
-    while let Some((ref token, _range)) = iter.peek() {
-        match token {
-            Token::NewLine => {
-                current = Indent::fresh(0);
-                iter.next();
-            }
-            Token::Space(count) => {
-                current = current.add(*count);
-                iter.next();
-            }
-            _ => {
-                return if current.indented_from(base) {
-                    Ok(IndentScope::In(current.extract()))
-                } else {
-                    Ok(IndentScope::Out(current.extract()))
-                };
-            }
-        }
-    }
-
-    // In this situation the iterator is returning None so we're at the end of the file/content and
-    // so we're definitely 'out' of the previous scope. It might be sensible for as to introduce a
-    // different IndentScope value for this
-    Ok(IndentScope::Out(0))
-}
-
-/// For when the code is only valid if we continue on the same line at an indent on the next line.
-/// For something like "if <expr> then". It isn't valid for <expr> to be at the same indent at the
-/// if-keyword.
-fn must_consume_to_indented<'b>(
-    iter: &mut TokenIter<'b>,
-    base: usize,
-    start: usize,
-) -> Result<usize, Error> {
-    let mut current = Indent::inherited(start);
-
-    while let Some((ref token, range)) = iter.peek() {
-        match token {
-            Token::NewLine => {
-                current = Indent::fresh(0);
-                iter.next();
-            }
-            Token::Space(count) => {
-                current = current.add(*count);
-                iter.next();
-            }
-            _ => {
-                return if current.indented_from(base) {
-                    Ok(current.extract())
-                } else {
-                    Err(Error::Indent {
-                        range: range.clone(),
-                    })
-                };
-            }
-        }
-    }
-
-    Ok(0)
-}
-
-/// For when the code can continue on the same line or a more indented one. This might be the
-/// closing parenthesis which can be at the same indent at the opening one or more indented.
-fn must_consume_to_at_least<'b>(
-    iter: &mut TokenIter<'b>,
-    base: usize,
-    start: usize,
-) -> Result<usize, Error> {
-    let mut current = Indent::inherited(start);
-
-    while let Some((ref token, range)) = iter.peek() {
-        match token {
-            Token::NewLine => {
-                current = Indent::fresh(0);
-                iter.next();
-            }
-            Token::Space(count) => {
-                current = current.add(*count);
-                iter.next();
-            }
-            _ => {
-                return if current.at_least(base) {
-                    Ok(current.extract())
-                } else {
-                    Err(Error::Indent {
-                        range: range.clone(),
-                    })
-                };
-            }
-        }
-    }
-
-    Ok(0)
-}
-
-/// For when the code must be on the same line or at the expected indentation. eg. the 'if' and
-/// 'else' keywords in an if-statement should be at the same indentation (or on the same line.)
-fn must_consume_to_matching<'b>(
-    iter: &mut TokenIter<'b>,
-    base: usize,
-    start: usize,
-) -> Result<usize, Error> {
-    let mut current = Indent::inherited(start);
-
-    while let Some((ref token, range)) = iter.peek() {
-        match token {
-            Token::NewLine => {
-                current = Indent::fresh(0);
-                iter.next();
-            }
-            Token::Space(count) => {
-                current = current.add(*count);
-                iter.next();
-            }
-            _ => {
-                return if current.matching(base) {
-                    Ok(current.extract())
-                } else {
-                    Err(Error::Indent {
-                        range: range.clone(),
-                    })
-                };
-            }
-        }
-    }
-
-    Ok(0)
-}
-
 // Statements
-fn parse_statements<'a>(mut iter: &mut TokenIter<'a>) -> Result<Vec<Stmt<'a>>, Error> {
+fn parse_statements<'a>(mut iter: &mut TokenIter<'a>) -> Result<Vec<Rc<Stmt<'a>>>, Error> {
     let mut statements = vec![];
 
+    let base = 0;
+    let current = 0;
+
+    loop {
+        match iter.peek() {
+            Some((Token::LowerName(_), _range)) => {
+                let statement = parse_function_or_binding(&mut iter, base, current)?;
+                statements.push(Rc::new(statement));
+            }
+            Some((Token::Infix, _range)) => {
+                let statement = parse_infix(&mut iter, base, current)?;
+                statements.push(Rc::new(statement));
+            }
+            Some((token, range)) => {
+                return Err(Error::UnexpectedToken {
+                    found: token.to_string(),
+                    expected: "Expression token".to_string(),
+                    range: range.clone(),
+                })
+            }
+            None => break,
+        }
+
+        // TODO: Update/fix/change
+        indent::must_consume_to_matching(&mut iter, base, current)?;
+    }
+
+    Ok(statements)
+}
+
+fn parse_infix<'src>(
+    mut iter: &mut TokenIter<'src>,
+    _base: usize,
+    mut _current: usize,
+) -> Result<Stmt<'src>, Error> {
+    matches(&iter.next(), Token::Infix)?;
+    consume_spaces(&mut iter);
+
+    let associativity = extract_associativity(&iter.next())?;
+    consume_spaces(&mut iter);
+
+    let precedence = extract_precendence(&iter.next())?;
+    consume_spaces(&mut iter);
+
+    matches(&iter.next(), Token::OpenParen)?;
+    let operator_name = extract_operator(&iter.next())?;
+    matches(&iter.next(), Token::CloseParen)?;
+    consume_spaces(&mut iter);
+
+    matches(&iter.next(), Token::Equals)?;
+    consume_spaces(&mut iter);
+
+    let function_name = extract_lower_name(&iter.next())?;
+
+    Ok(Stmt::Infix {
+        operator_name,
+        associativity,
+        precedence,
+        function_name,
+    })
+}
+
+fn extract_precendence<'a>(stream_token: &Option<SrcToken<'a>>) -> Result<usize, Error> {
+    match stream_token {
+        Some((Token::LiteralInteger(int), _range)) => {
+            usize::try_from(*int).map_err(|_| Error::NegativePrecendence)
+        }
+        Some((token, range)) => Err(Error::UnexpectedToken {
+            found: token.to_string(),
+            expected: Token::UpperName("").to_string(),
+            range: range.clone(),
+        }),
+        None => Err(Error::UnexpectedEnd),
+    }
+}
+
+fn parse_function_or_binding<'src>(
+    mut iter: &mut TokenIter<'src>,
+    base: usize,
+    mut current: usize,
+) -> Result<Stmt<'src>, Error> {
+    let name = extract_lower_name(&iter.next())?;
+    consume_spaces(&mut iter);
+
+    let mut args = Vec::new();
     loop {
         if !matches!(iter.peek(), Some((Token::LowerName(_), _range))) {
             break;
         }
 
-        let name = extract_var_name(&iter.next())?;
+        let arg = extract_pattern_name(&iter.next())?;
+        args.push(arg);
+
         consume_spaces(&mut iter);
-
-        let mut args = Vec::new();
-        loop {
-            if !matches!(iter.peek(), Some((Token::LowerName(_), _range))) {
-                break;
-            }
-
-            let arg = extract_pattern_name(&iter.next())?;
-            args.push(arg);
-
-            consume_spaces(&mut iter);
-        }
-
-        matches(&iter.next(), Token::Equals)?;
-
-        let base = 0;
-        let mut current = 0;
-
-        let indent = consume_to_indented(&mut iter, base, current)?;
-        current = indent.extract();
-
-        let (expr, curr) = parse_expression(&mut iter, current, current)?;
-        current = curr;
-
-        if args.is_empty() {
-            statements.push(Stmt::Binding { name, expr });
-        } else {
-            statements.push(Stmt::Function { name, args, expr });
-        }
-
-        // TODO: Update/fix/change
-        must_consume_to_matching(&mut iter, base, current)?;
     }
 
-    Ok(statements)
+    matches(&iter.next(), Token::Equals)?;
+
+    let indent = indent::consume_to_indented(&mut iter, base, current)?;
+    current = indent.extract();
+
+    let (expr, _curr) = parse_expression(&mut iter, current, current)?;
+
+    if args.is_empty() {
+        Ok(Stmt::Binding {
+            name,
+            expr: Rc::new(expr),
+        })
+    } else {
+        Ok(Stmt::Function {
+            name,
+            args,
+            expr: Rc::new(expr),
+        })
+    }
 }
 
 // Expressions
@@ -446,7 +344,7 @@ fn parse_binary_expression<'a, 'b>(
     // indentation that indicates the end of the scope for this expression then we just want to
     // return the expression we've found so far and allow the level up to deal with the change in
     // scope.
-    let indent = consume_to_indented(&mut iter, base, current)?;
+    let indent = indent::consume_to_indented(&mut iter, base, current)?;
     if indent.in_scope() {
         current = indent.extract();
     } else {
@@ -458,7 +356,7 @@ fn parse_binary_expression<'a, 'b>(
 
     while matches!(iter.peek(), Some((Token::Operator(_), _range))) {
         let operator = extract_operator(&iter.next())?;
-        current = must_consume_to_indented(&mut iter, base, current)?;
+        current = indent::must_consume_to_indented(&mut iter, base, current)?;
 
         process_stacks(operator, &mut operator_stack, &mut operand_stack)?;
 
@@ -470,7 +368,7 @@ fn parse_binary_expression<'a, 'b>(
         // then any whitespace afterwards (to reach the next operator if there is one) but if we
         // find that we're no longer in the indentation scope of the expression then we assume
         // we've reached the end of it and continue with processing what we've got so far
-        let indent = consume_to_indented(&mut iter, base, current)?;
+        let indent = indent::consume_to_indented(&mut iter, base, current)?;
         if indent.in_scope() {
             current = indent.extract();
         } else {
@@ -485,8 +383,8 @@ fn parse_binary_expression<'a, 'b>(
 
         operand_stack.push(Expr::BinOp {
             operator,
-            left: Box::new(left_hand_expr),
-            right: Box::new(right_hand_expr),
+            left: Rc::new(left_hand_expr),
+            right: Rc::new(right_hand_expr),
         })
     }
 
@@ -502,7 +400,7 @@ fn process_stacks<'a>(
     mut operator_stack: &mut Vec<&'a str>,
     mut operand_stack: &mut Vec<Expr<'a>>,
 ) -> Result<(), Error> {
-    if has_greater_precendence(operator, &operator_stack)? {
+    if has_greater_precedence(operator, &operator_stack)? {
         operator_stack.push(operator);
     } else {
         let right_hand_expr = operand_stack.pop().ok_or(Error::NoOperand)?;
@@ -511,8 +409,8 @@ fn process_stacks<'a>(
 
         operand_stack.push(Expr::BinOp {
             operator: stored_operator,
-            left: Box::new(left_hand_expr),
-            right: Box::new(right_hand_expr),
+            left: Rc::new(left_hand_expr),
+            right: Rc::new(right_hand_expr),
         });
 
         process_stacks(operator, &mut operator_stack, &mut operand_stack)?;
@@ -521,18 +419,18 @@ fn process_stacks<'a>(
     Ok(())
 }
 
-fn has_greater_precendence<'a>(
+fn has_greater_precedence<'a>(
     operator_a: &'a str,
     operator_stack: &Vec<&'a str>,
 ) -> Result<bool, Error> {
     if operator_stack.is_empty() {
         Ok(true)
     } else {
-        let precedence_a = precendence(operator_a)?;
+        let precedence_a = precedence(operator_a)?;
         let precedence_b = operator_stack
             .last()
             .ok_or(Error::EmptyOperatorStack)
-            .and_then(|op| precendence(op))?;
+            .and_then(|op| precedence(op))?;
 
         Ok(precedence_a > precedence_b)
     }
@@ -543,7 +441,7 @@ fn has_greater_precendence<'a>(
 //   - http://faq.elm-community.org/operators.html
 //   - https://github.com/elm-lang/core/blob/master/src/Basics.elm#L72-L90
 //
-fn precendence<'a>(operator: &'a str) -> Result<usize, Error> {
+fn precedence<'a>(operator: &'a str) -> Result<usize, Error> {
     match operator {
         "*" | "/" => Ok(7),
         "+" | "-" => Ok(6),
@@ -562,7 +460,7 @@ fn parse_singular_expression<'a, 'b>(
         Some((Token::OpenParen, _range)) => {
             matches(&iter.next(), Token::OpenParen)?;
             let (expr, current) = parse_expression(&mut iter, base, current)?;
-            let current = must_consume_to_at_least(&mut iter, base, current)?;
+            let current = indent::must_consume_to_at_least(&mut iter, base, current)?;
             matches(&iter.next(), Token::CloseParen)?;
             Ok((expr, current))
         }
@@ -622,13 +520,13 @@ fn parse_var_or_call<'a>(
     base: usize,
     mut current: usize,
 ) -> Result<(Expr<'a>, usize), Error> {
-    let name = extract_var_name(&iter.next())?;
+    let name = extract_lower_name(&iter.next())?;
 
     // We have to keep parsing to look for more parts to this expression but if we find a change in
     // indentation that indicates the end of the scope for this expression then we just want to
     // return the expression we've found so far and allow the level up to deal with the change in
     // scope.
-    let indent = consume_to_indented(&mut iter, base, current)?;
+    let indent = indent::consume_to_indented(&mut iter, base, current)?;
     if indent.in_scope() {
         current = indent.extract();
     } else {
@@ -649,13 +547,13 @@ fn parse_var_or_call<'a>(
 
         let (argument_expr, curr) = parse_singular_expression(&mut iter, base, current)?;
         current = curr;
-        args.push(argument_expr);
+        args.push(Rc::new(argument_expr));
 
         // Similar to above, we consume the expression on the right hand side of the operator and
         // then any whitespace afterwards (to reach the next operator if there is one) but if we
         // find that we're no longer in the indentation scope of the expression then we assume
         // we've reached the end of it and continue with processing what we've got so far
-        let indent = consume_to_indented(&mut iter, base, current)?;
+        let indent = indent::consume_to_indented(&mut iter, base, current)?;
         if indent.in_scope() {
             current = indent.extract();
         } else {
@@ -682,28 +580,28 @@ fn parse_if_expression<'a>(
     mut current: usize,
 ) -> Result<(Expr<'a>, usize), Error> {
     matches(&iter.next(), Token::If)?;
-    current = must_consume_to_indented(&mut iter, base, current)?;
+    current = indent::must_consume_to_indented(&mut iter, base, current)?;
     let (condition, curr) = parse_expression(&mut iter, current, current)?;
     current = curr;
 
-    current = must_consume_to_matching(&mut iter, base, current)?;
+    current = indent::must_consume_to_matching(&mut iter, base, current)?;
     matches(&iter.next(), Token::Then)?;
 
-    current = must_consume_to_indented(&mut iter, base, current)?;
+    current = indent::must_consume_to_indented(&mut iter, base, current)?;
     let (then_branch, curr) = parse_expression(&mut iter, current, current)?;
     current = curr;
 
-    current = must_consume_to_matching(&mut iter, base, current)?;
+    current = indent::must_consume_to_matching(&mut iter, base, current)?;
     matches(&iter.next(), Token::Else)?;
 
-    current = must_consume_to_indented(&mut iter, base, current)?;
+    current = indent::must_consume_to_indented(&mut iter, base, current)?;
     let (else_branch, current) = parse_expression(&mut iter, current, current)?;
 
     Ok((
         Expr::If {
-            condition: Box::new(condition),
-            then_branch: Box::new(then_branch),
-            else_branch: Box::new(else_branch),
+            condition: Rc::new(condition),
+            then_branch: Rc::new(then_branch),
+            else_branch: Rc::new(else_branch),
         },
         current,
     ))
@@ -750,7 +648,7 @@ fn extract_upper_name<'a>(stream_token: &Option<SrcToken<'a>>) -> Result<&'a str
     }
 }
 
-fn extract_var_name<'a>(stream_token: &Option<SrcToken<'a>>) -> Result<&'a str, Error> {
+fn extract_lower_name<'a>(stream_token: &Option<SrcToken<'a>>) -> Result<&'a str, Error> {
     match stream_token {
         Some((Token::LowerName(name), _range)) => Ok(name),
         Some((token, range)) => Err(Error::UnexpectedToken {
