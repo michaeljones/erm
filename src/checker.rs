@@ -149,8 +149,8 @@ fn binary_expression_to_term<'a, 'b, 'src>(
     if let Some(operator) = env::get_operator(&scopes, operator_name) {
         // TODO: Make sure we get the function that corresponds to the same scope as the operator
         // otherwise we might get another function
-        match env::get_binding(&scopes, operator.function_name) {
-            Some(Binding::UserFunc(stmt_rc)) => match &*stmt_rc {
+        match operator.binding {
+            Binding::UserFunc(stmt_rc) => match &*stmt_rc {
                 Stmt::Function { .. } => {
                     // TODO: Figure out how to get from this function def to a usable signature for
                     // checking against with the args that we have
@@ -176,7 +176,7 @@ fn binary_expression_to_term<'a, 'b, 'src>(
                     line!(),
                 )),
             },
-            Some(Binding::UserBinding(expr_rc)) => {
+            Binding::UserBinding(expr_rc) => {
                 let signature_term = expression_to_term(&expr_rc, &scopes)?;
                 let left_term = expression_to_term(left, &scopes)?;
                 let right_term = expression_to_term(right, &scopes)?;
@@ -188,7 +188,7 @@ fn binary_expression_to_term<'a, 'b, 'src>(
                     &scopes
                 ))
             }
-            Some(Binding::BuiltInFunc(_func)) => {
+            Binding::BuiltInFunc(_func) => {
                 // let args = vec![left.clone(), right.clone()];
                 // built_in_to_term(func, &args, &scopes)
                 Err(Error::Broken(

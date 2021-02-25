@@ -11,6 +11,7 @@ pub struct Operator<'src> {
     pub associativity: Associativity,
     pub precedence: usize,
     pub function_name: &'src str,
+    pub binding: Binding<'src>,
 }
 
 pub type Bindings<'src> = HashMap<String, Binding<'src>>;
@@ -26,7 +27,7 @@ pub type Scopes<'src> = im::Vector<Rc<Scope<'src>>>;
 
 impl<'src> Scope<'src> {
     pub fn from_module(module: &Module<'src>) -> Self {
-        let bindings = module
+        let bindings: Bindings<'src> = module
             .statements
             .iter()
             .flat_map(|entry| match &**entry {
@@ -49,15 +50,21 @@ impl<'src> Scope<'src> {
                     associativity,
                     precedence,
                     function_name,
-                } => Some((
-                    operator_name.to_string(),
-                    Operator {
-                        operator_name,
-                        associativity: associativity.clone(),
-                        precedence: *precedence,
-                        function_name,
-                    },
-                )),
+                } => bindings.get(&function_name.to_string()).map(|binding| {
+                    (
+                        operator_name.to_string(),
+                        Operator {
+                            operator_name,
+                            associativity: associativity.clone(),
+                            precedence: *precedence,
+                            function_name,
+                            // Store the binding for the operator's function along with the
+                            // operator for easy access with checking & evaluating
+                            binding: binding.clone(),
+                        },
+                    )
+                }),
+
                 _ => None,
             })
             .collect();
