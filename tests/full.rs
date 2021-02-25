@@ -304,3 +304,17 @@ fn function_clashes_with_operator_func() {
     let result = eval(src);
     assert_eq!(result, Ok(string("7")), "{}", pretty_print(&result));
 }
+
+#[test]
+fn function_calls_function() {
+    // Make sure we can call a function from a function
+    let src = r#"
+        module Main exposing (..)
+        sub1 y = y - 1
+        add1 x = sub1 x + 2
+        main =
+          stringFromInt (add1 2)
+        "#;
+    let result = eval(src);
+    assert_eq!(result, Ok(string("3")), "{}", pretty_print(&result));
+}
