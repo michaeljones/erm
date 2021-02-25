@@ -1,4 +1,4 @@
-module Basics exposing (..)
+module Basics exposing ((+), (-), (*))
 
 infix non   4 (<)  = lt
 infix non   4 (>)  = gt

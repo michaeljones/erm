@@ -9,8 +9,21 @@ use crate::lexer::{Range, SrcToken, Token, TokenIter};
 #[derive(Debug)]
 pub struct Module<'a> {
     name: &'a str,
+    exposing: Exposing<'a>,
     imports: Vec<Import<'a>>,
     pub statements: Vec<Rc<Stmt<'a>>>,
+}
+
+#[derive(Debug)]
+pub enum Exposing<'a> {
+    All,
+    List(Vec<ExposingDetail<'a>>),
+}
+
+#[derive(Debug)]
+pub enum ExposingDetail<'a> {
+    Operator(&'a str),
+    Name(&'a str),
 }
 
 #[derive(Debug)]
@@ -117,6 +130,7 @@ pub enum Error {
     NoOperator,
     EmptyOperatorStack,
     UnknownOperator(String),
+    UnknownExposing(String),
     NegativePrecendence,
 }
 
@@ -130,7 +144,7 @@ pub fn parse<'src>(mut iter: &mut TokenIter<'src>) -> ParseResult<'src> {
     matches(&iter.next(), Token::Exposing)?;
     matches_space(&iter.next())?;
     matches(&iter.next(), Token::OpenParen)?;
-    matches(&iter.next(), Token::Ellipsis)?;
+    let exposing = parse_exposing(&mut iter)?;
     matches(&iter.next(), Token::CloseParen)?;
 
     consume_til_line_start(&mut iter);
@@ -144,6 +158,7 @@ pub fn parse<'src>(mut iter: &mut TokenIter<'src>) -> ParseResult<'src> {
     if iter.peek() == None {
         Ok(Module {
             name,
+            exposing,
             imports,
             statements,
         })
@@ -151,6 +166,42 @@ pub fn parse<'src>(mut iter: &mut TokenIter<'src>) -> ParseResult<'src> {
         let tokens = iter.map(|token| format!("{:?}", token)).collect();
         Err(Error::TokensRemaining(tokens))
     }
+}
+
+fn parse_exposing<'a>(mut iter: &mut TokenIter<'a>) -> Result<Exposing<'a>, Error> {
+    match iter.peek() {
+        Some((Token::Ellipsis, _range)) => {
+            iter.next();
+            Ok(Exposing::All)
+        }
+        Some(_) => parse_exposing_details(&mut iter).map(Exposing::List),
+        token => Err(Error::UnknownExposing(format!("{:?}", token))),
+    }
+}
+
+fn parse_exposing_details<'a>(iter: &mut TokenIter<'a>) -> Result<Vec<ExposingDetail<'a>>, Error> {
+    let mut details = vec![];
+    loop {
+        match iter.peek() {
+            Some((Token::OpenParen, _range)) => {
+                iter.next();
+                let operator_name = extract_operator(&iter.next())?;
+                matches(&iter.next(), Token::CloseParen)?;
+                details.push(ExposingDetail::Operator(operator_name))
+            }
+            token => return Err(Error::UnknownExposing(format!("{:?}", token))),
+        }
+
+        if let Some((Token::CloseParen, _range)) = iter.peek() {
+            // Break without consuming the CloseParen
+            break;
+        }
+
+        matches(&iter.next(), Token::Comma)?;
+        matches_space(&iter.next())?;
+    }
+
+    Ok(details)
 }
 
 fn consume_til_line_start<'a>(mut iter: &mut TokenIter<'a>) {
