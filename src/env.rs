@@ -23,7 +23,11 @@ pub struct Scope<'src> {
     pub operators: Operators<'src>,
 }
 
-pub type Scopes<'src> = im::Vector<Rc<Scope<'src>>>;
+#[derive(Debug)]
+pub struct Environment<'src> {
+    pub module_scopes: im::Vector<Rc<Scope<'src>>>,
+    pub local_scopes: im::Vector<Rc<Scope<'src>>>,
+}
 
 impl<'src> Scope<'src> {
     pub fn from_module(module: &Module<'src>) -> Self {
@@ -83,7 +87,10 @@ impl<'src> Scope<'src> {
     }
 }
 
-pub fn get_binding<'src>(scopes: &Scopes<'src>, target_name: &str) -> Option<Binding<'src>> {
+pub fn get_binding<'src>(
+    environment: &Environment<'src>,
+    target_name: &str,
+) -> Option<Binding<'src>> {
     match target_name {
         "stringFromInt" => return Some(Binding::BuiltInFunc(Rc::new(builtins::StringFromInt {}))),
         "stringFromBool" => {
@@ -101,7 +108,13 @@ pub fn get_binding<'src>(scopes: &Scopes<'src>, target_name: &str) -> Option<Bin
         _ => {}
     }
 
-    for scope in scopes {
+    for scope in &environment.local_scopes {
+        if let Some(value) = scope.bindings.get(target_name) {
+            return Some(value.clone());
+        }
+    }
+
+    for scope in &environment.module_scopes {
         if let Some(value) = scope.bindings.get(target_name) {
             return Some(value.clone());
         }
@@ -110,8 +123,17 @@ pub fn get_binding<'src>(scopes: &Scopes<'src>, target_name: &str) -> Option<Bin
     None
 }
 
-pub fn get_operator<'a, 'src>(scopes: &Scopes<'src>, target_name: &str) -> Option<Operator<'src>> {
-    for scope in scopes {
+pub fn get_operator<'a, 'src>(
+    environment: &Environment<'src>,
+    target_name: &str,
+) -> Option<Operator<'src>> {
+    for scope in &environment.local_scopes {
+        if let Some(value) = scope.operators.get(target_name) {
+            return Some(value.clone());
+        }
+    }
+
+    for scope in &environment.module_scopes {
         if let Some(value) = scope.operators.get(target_name) {
             return Some(value.clone());
         }
@@ -120,33 +142,31 @@ pub fn get_operator<'a, 'src>(scopes: &Scopes<'src>, target_name: &str) -> Optio
     None
 }
 
-/*
-pub fn get_binding<'src>(scopes: &Scopes<'src>, target_name: &str) -> Option<Rc<Expr<'src>>> {
-    for scope in scopes {
-        if let Some(value) = scope.bindings.get(target_name) {
-            return Some(value.clone());
-        }
-    }
-
-    None
-
-    /*
-    module.statements.iter().find_map(|stmt| match stmt {
-        Stmt::Binding { name, expr } => {
-            if name == &target_name {
-                Some(expr)
-            } else {
-                None
-            }
-        }
-        _ => None,
-    })
-    */
-}
-*/
-
-pub fn add_scope<'a, 'b>(scopes: &Scopes<'b>, new_scope: Scope<'b>) -> Scopes<'b> {
-    let mut new_scopes = scopes.clone();
+pub fn add_module_scope<'b>(
+    environment: &Environment<'b>,
+    new_scope: Scope<'b>,
+) -> Environment<'b> {
+    let mut new_scopes = environment.module_scopes.clone();
     new_scopes.push_front(Rc::new(new_scope));
-    new_scopes
+
+    Environment {
+        module_scopes: new_scopes,
+        local_scopes: environment.local_scopes.clone(),
+    }
+}
+
+pub fn add_local_scope<'b>(environment: &Environment<'b>, new_scope: Scope<'b>) -> Environment<'b> {
+    let mut new_scopes = environment.local_scopes.clone();
+    new_scopes.push_front(Rc::new(new_scope));
+
+    Environment {
+        module_scopes: environment.module_scopes.clone(),
+        local_scopes: new_scopes,
+    }
+}
+pub fn new_local_scope<'b>(environment: &Environment<'b>, new_scope: Scope<'b>) -> Environment<'b> {
+    Environment {
+        module_scopes: environment.module_scopes.clone(),
+        local_scopes: im::vector![Rc::new(new_scope)],
+    }
 }

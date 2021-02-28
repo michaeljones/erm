@@ -1,6 +1,7 @@
 #[macro_use]
 extern crate im;
 extern crate codespan_reporting;
+extern crate env_logger;
 extern crate erm;
 extern crate logos;
 extern crate unindent;
@@ -57,27 +58,41 @@ fn pretty_print(result: &Result<Value, Error>) -> String {
 }
 
 fn eval(string: &str) -> Result<Value, Error> {
+    let _ = env_logger::builder().is_test(true).try_init();
+
     let src = unindent(&string);
+    let module = erm::parse_source(&src).map_err(|err| Error::ParserError(err, string))?;
+
     let basics =
         erm::parse_basics().map_err(|err| Error::ParserError(err, erm::basics_source()))?;
-    let module = erm::parse_source(&src).map_err(|err| Error::ParserError(err, string))?;
 
     let scope = env::Scope::from_module(&basics);
     let scopes = vector![Rc::new(scope)];
-    checker::check(&module, &scopes).map_err(Error::CheckError)?;
-    evaluater::evaluate(&module, &Vec::new(), &scopes).map_err(Error::EvaluateError)
+    let environment = env::Environment {
+        module_scopes: scopes,
+        local_scopes: vector![],
+    };
+    checker::check(&module, &environment).map_err(Error::CheckError)?;
+    evaluater::evaluate(&module, &Vec::new(), &environment).map_err(Error::EvaluateError)
 }
 
 fn eval_with_args(string: &str, args: Vec<String>) -> Result<Value, Error> {
+    let _ = env_logger::builder().is_test(true).try_init();
+
     let src = unindent(&string);
+    let module = erm::parse_source(&src).map_err(|err| Error::ParserError(err, string))?;
+
     let basics =
         erm::parse_basics().map_err(|err| Error::ParserError(err, erm::basics_source()))?;
-    let module = erm::parse_source(&src).map_err(|err| Error::ParserError(err, string))?;
 
     let scope = env::Scope::from_module(&basics);
     let scopes = vector![Rc::new(scope)];
-    checker::check(&module, &scopes).map_err(Error::CheckError)?;
-    evaluater::evaluate(&module, &args, &scopes).map_err(Error::EvaluateError)
+    let environment = env::Environment {
+        module_scopes: scopes,
+        local_scopes: vector![],
+    };
+    checker::check(&module, &environment).map_err(Error::CheckError)?;
+    evaluater::evaluate(&module, &args, &environment).map_err(Error::EvaluateError)
 }
 
 fn string(str: &str) -> Value {
@@ -311,6 +326,20 @@ fn function_calls_function() {
     let src = r#"
         module Main exposing (..)
         sub1 y = y - 1
+        add1 x = sub1 x + 2
+        main =
+          stringFromInt (add1 2)
+        "#;
+    let result = eval(src);
+    assert_eq!(result, Ok(string("3")), "{}", pretty_print(&result));
+}
+
+#[test]
+fn function_calls_same_args() {
+    // To cover a bug where we get confused when functions have the same arg name
+    let src = r#"
+        module Main exposing (..)
+        sub1 x = x - 1
         add1 x = sub1 x + 2
         main =
           stringFromInt (add1 2)

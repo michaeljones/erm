@@ -137,6 +137,8 @@ pub enum Error {
 pub type ParseResult<'src> = Result<Module<'src>, Error>;
 
 pub fn parse<'src>(mut iter: &mut TokenIter<'src>) -> ParseResult<'src> {
+    log::trace!("Checker: Start");
+
     matches(&iter.next(), Token::Module)?;
     matches_space(&iter.next())?;
     let name = extract_upper_name(&iter.next())?;

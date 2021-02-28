@@ -17,6 +17,8 @@ regex = { version = "1.4.2" }
 walkdir = "2.3.1"
 clap = "2.33.3"
 im = "15.0.0"
+log = "0.4.14"
+env_logger = "*"
 
 [dev-dependencies]
 unindent = "0.1.7"

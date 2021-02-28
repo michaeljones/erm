@@ -48,7 +48,11 @@ fn dump_file(filename: &str, _quiet: bool) -> Result<(), Error> {
     let basics = erm::parse_basics().map_err(|_| Error::ParserError)?;
     let scope = env::Scope::from_module(&basics);
     let scopes = vector![Rc::new(scope)];
-    evaluater::evaluate(&module, &args, &scopes).map_err(|err| {
+    let environment = env::Environment {
+        module_scopes: scopes,
+        local_scopes: vector![],
+    };
+    evaluater::evaluate(&module, &args, &environment).map_err(|err| {
         println!("{:?}", &err);
         Error::EvaluateError
     })?;

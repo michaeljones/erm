@@ -1,4 +1,5 @@
 extern crate im;
+extern crate log;
 extern crate logos;
 
 use logos::Logos;
