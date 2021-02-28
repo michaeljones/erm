@@ -26,5 +26,5 @@ pub fn parse_basics() -> parser::ParseResult<'static> {
 }
 
 pub fn basics_source() -> &'static str {
-    include_str!("Basics.elm")
+    include_str!("../core/Basics.elm")
 }
