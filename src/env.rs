@@ -3,7 +3,7 @@ use std::rc::Rc;
 
 use super::builtins;
 use super::function::Binding;
-use super::parser::{Associativity, Module, Stmt};
+use super::module::{Associativity, Module, Stmt};
 
 #[derive(Debug, Clone)]
 pub struct Operator<'src> {

@@ -3,116 +3,8 @@ mod indent;
 use std::convert::TryFrom;
 use std::rc::Rc;
 
-use crate::checker::term;
-use crate::lexer::{Range, SrcToken, Token, TokenIter};
-
-#[derive(Debug)]
-pub struct Module<'a> {
-    name: &'a str,
-    exposing: Exposing<'a>,
-    imports: Vec<Import<'a>>,
-    pub statements: Vec<Rc<Stmt<'a>>>,
-}
-
-#[derive(Debug)]
-pub enum Exposing<'a> {
-    All,
-    List(Vec<ExposingDetail<'a>>),
-}
-
-#[derive(Debug)]
-pub enum ExposingDetail<'a> {
-    Operator(&'a str),
-    Name(&'a str),
-}
-
-#[derive(Debug)]
-pub struct Import<'a> {
-    module_name: &'a str,
-}
-
-#[derive(Debug)]
-pub enum Stmt<'a> {
-    Binding {
-        name: &'a str,
-        expr: Rc<Expr<'a>>,
-    },
-    Function {
-        name: &'a str,
-        args: Vec<Pattern<'a>>,
-        expr: Rc<Expr<'a>>,
-    },
-    Infix {
-        operator_name: &'a str,
-        associativity: Associativity,
-        precedence: usize,
-        function_name: &'a str,
-    },
-}
-
-#[derive(Clone, Debug)]
-pub enum Associativity {
-    Left,
-    Right,
-    Non,
-}
-
-fn extract_associativity<'a>(stream_token: &Option<SrcToken<'a>>) -> Result<Associativity, Error> {
-    match stream_token {
-        Some((Token::LowerName("left"), _range)) => Ok(Associativity::Left),
-        Some((Token::LowerName("right"), _range)) => Ok(Associativity::Right),
-        Some((Token::LowerName("non"), _range)) => Ok(Associativity::Non),
-        Some((token, range)) => Err(Error::UnexpectedToken {
-            found: token.to_string(),
-            expected: "LowerName with 'left', 'right', or 'non".to_string(),
-            range: range.clone(),
-        }),
-        None => Err(Error::UnexpectedEnd),
-    }
-}
-
-#[derive(Debug)]
-pub enum Pattern<'a> {
-    Name(&'a str),
-}
-
-impl<'a> Pattern<'a> {
-    pub fn names(&self) -> Vec<String> {
-        match self {
-            Pattern::Name(name) => vec![name.to_string()],
-        }
-    }
-
-    pub fn term(&self) -> term::Term {
-        match self {
-            Pattern::Name(name) => term::Term::Var(name.to_string()),
-        }
-    }
-}
-
-#[derive(Debug)]
-pub enum Expr<'a> {
-    Bool(bool),
-    Integer(i32),
-    Float(f32),
-    String(&'a str),
-    List(Vec<Rc<Expr<'a>>>),
-    BinOp {
-        operator: &'a str,
-        left: Rc<Expr<'a>>,
-        right: Rc<Expr<'a>>,
-    },
-    If {
-        condition: Rc<Expr<'a>>,
-        then_branch: Rc<Expr<'a>>,
-        else_branch: Rc<Expr<'a>>,
-    },
-    Call {
-        function_name: &'a str,
-        args: Vec<Rc<Expr<'a>>>,
-    },
-    VarName(&'a str),
-}
+use super::lexer::{Range, SrcToken, Token, TokenIter};
+use super::module::*;
 
 #[derive(Debug, PartialEq)]
 pub enum Error {
@@ -731,6 +623,20 @@ fn extract_pattern_name<'a>(stream_token: &Option<SrcToken<'a>>) -> Result<Patte
         Some((token, range)) => Err(Error::UnexpectedToken {
             found: token.to_string(),
             expected: Token::LowerName("").to_string(),
+            range: range.clone(),
+        }),
+        None => Err(Error::UnexpectedEnd),
+    }
+}
+
+fn extract_associativity<'a>(stream_token: &Option<SrcToken<'a>>) -> Result<Associativity, Error> {
+    match stream_token {
+        Some((Token::LowerName("left"), _range)) => Ok(Associativity::Left),
+        Some((Token::LowerName("right"), _range)) => Ok(Associativity::Right),
+        Some((Token::LowerName("non"), _range)) => Ok(Associativity::Non),
+        Some((token, range)) => Err(Error::UnexpectedToken {
+            found: token.to_string(),
+            expected: "LowerName with 'left', 'right', or 'non".to_string(),
             range: range.clone(),
         }),
         None => Err(Error::UnexpectedEnd),

@@ -6,7 +6,7 @@ use std::rc::Rc;
 use self::term::{Term, Value};
 use super::env;
 use super::function::Binding;
-use super::parser::{Expr, Module, Stmt};
+use super::module::{Expr, Module, Stmt};
 
 #[derive(Debug, PartialEq)]
 pub enum Error {

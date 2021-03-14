@@ -2,7 +2,7 @@ use std::rc::Rc;
 
 use super::checker::term;
 use super::evaluater::values;
-use super::parser::{Expr, Stmt};
+use super::module::{Expr, Stmt};
 
 #[derive(Debug, PartialEq)]
 pub enum Error {

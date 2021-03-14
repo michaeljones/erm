@@ -7,7 +7,7 @@ use self::values::Value;
 use super::env;
 use super::function;
 use super::function::Binding;
-use super::parser::{Expr, Module, Pattern, Stmt};
+use super::module::{Expr, Module, Pattern, Stmt};
 
 #[derive(Debug, PartialEq)]
 pub enum Error {
