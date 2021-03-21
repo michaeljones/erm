@@ -15,6 +15,14 @@ It does not really work at the moment.
 - Explore the idea of supporting a dhall like approach to generating config. Perhaps a 'Config'
   output type for the 'main' function and some kind of automatic support for json/yaml/toml outputs.
 
+## Tests
+
+Run tests with logging output:
+
+```
+RUST_LOG=trace cargo test -- --nocapture
+```
+
 ## Links
 
 ### Type Inference
@@ -26,6 +34,7 @@ It does not really work at the moment.
 - https://dev.to/dannypsnl/hindley-milner-type-system-incrementally-build-way-make-new-language-in-racket-307j
 - https://www.lesswrong.com/posts/vTS8K4NBSi9iyCrPo/a-reckless-introduction-to-hindley-milner-type-inference
 - https://cstheory.stackexchange.com/questions/25573/what-are-some-good-introductory-books-on-type-theory
+- http://reasonableapproximation.net/2019/05/05/hindley-milner.html
 
 ### Parsing Binary Expressions
 

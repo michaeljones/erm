@@ -18,21 +18,25 @@ use erm::env;
 use erm::evaluater;
 use erm::evaluater::values::Value;
 use erm::lexer::Range;
+use erm::module;
 use erm::parser;
 
 #[derive(Debug, PartialEq)]
-enum Error<'src> {
-    ParserError(parser::Error, &'src str),
+enum Error {
+    ParserError(parser::Error, String),
     CheckError(checker::Error),
     EvaluateError(evaluater::Error),
+    ScopeError(env::Error),
 }
 
-fn get_range<'src>(result: &Result<Value, Error<'src>>) -> Option<(&'src str, Range)> {
+fn get_range(result: &Result<Value, Error>) -> Option<(String, Range)> {
     match result {
         Err(Error::ParserError(parser::Error::UnexpectedToken { range, .. }, src)) => {
-            Some((src, range.clone()))
+            Some((src.to_string(), range.clone()))
         }
-        Err(Error::ParserError(parser::Error::Indent { range }, src)) => Some((src, range.clone())),
+        Err(Error::ParserError(parser::Error::Indent { range }, src)) => {
+            Some((src.to_string(), range.clone()))
+        }
         _ => None,
     }
 }
@@ -40,7 +44,7 @@ fn get_range<'src>(result: &Result<Value, Error<'src>>) -> Option<(&'src str, Ra
 fn pretty_print(result: &Result<Value, Error>) -> String {
     if let Some((src, range)) = get_range(result) {
         let mut files = SimpleFiles::new();
-        let file_id = files.add("sample", unindent(src));
+        let file_id = files.add("sample", unindent(&src));
         let diagnostic =
             Diagnostic::error().with_labels(vec![Label::primary(file_id, range.clone())]);
 
@@ -60,39 +64,45 @@ fn pretty_print(result: &Result<Value, Error>) -> String {
 fn eval(string: &str) -> Result<Value, Error> {
     let _ = env_logger::builder().is_test(true).try_init();
 
+    log::trace!("eval");
+
     let src = unindent(&string);
-    let module = erm::parse_source(&src).map_err(|err| Error::ParserError(err, string))?;
+    let module =
+        erm::parse_source(src).map_err(|err| Error::ParserError(err, string.to_string()))?;
 
-    let basics =
-        erm::parse_basics().map_err(|err| Error::ParserError(err, erm::basics_source()))?;
+    let module = module::with_default_imports(&module); // Something with the imports added
 
-    let scope = env::Scope::from_module(&basics);
+    let scope = env::Scope::from_module(&module).map_err(Error::ScopeError)?;
+
     let scopes = vector![Rc::new(scope)];
     let environment = env::Environment {
         module_scopes: scopes,
         local_scopes: vector![],
     };
     checker::check(&module, &environment).map_err(Error::CheckError)?;
-    evaluater::evaluate(&module, &Vec::new(), &environment).map_err(Error::EvaluateError)
+    evaluater::evaluate(&module, Vec::new(), &environment).map_err(Error::EvaluateError)
 }
 
 fn eval_with_args(string: &str, args: Vec<String>) -> Result<Value, Error> {
     let _ = env_logger::builder().is_test(true).try_init();
 
+    log::trace!("eval_with_args");
+
     let src = unindent(&string);
-    let module = erm::parse_source(&src).map_err(|err| Error::ParserError(err, string))?;
+    let module =
+        erm::parse_source(src).map_err(|err| Error::ParserError(err, string.to_string()))?;
 
     let basics =
         erm::parse_basics().map_err(|err| Error::ParserError(err, erm::basics_source()))?;
 
-    let scope = env::Scope::from_module(&basics);
+    let scope = env::Scope::from_module(&basics).map_err(Error::ScopeError)?;
     let scopes = vector![Rc::new(scope)];
     let environment = env::Environment {
         module_scopes: scopes,
         local_scopes: vector![],
     };
     checker::check(&module, &environment).map_err(Error::CheckError)?;
-    evaluater::evaluate(&module, &args, &environment).map_err(Error::EvaluateError)
+    evaluater::evaluate(&module, args, &environment).map_err(Error::EvaluateError)
 }
 
 fn string(str: &str) -> Value {
@@ -244,7 +254,7 @@ fn if_statement_multi_line_bad() {
         result,
         Err(Error::ParserError(
             parser::Error::Indent { range: 50..51 },
-            &src
+            src.to_string()
         )),
     );
 }
@@ -346,4 +356,22 @@ fn function_calls_same_args() {
         "#;
     let result = eval(src);
     assert_eq!(result, Ok(string("3")), "{}", pretty_print(&result));
+}
+
+#[test]
+fn use_built_in_string_module() {
+    // To check that something like the String module can exist in the prelude and be accessed in
+    // general functions without importing it
+    let src = r#"
+        module Main exposing (..)
+        main =
+          String.append "Hello, " "World"
+        "#;
+    let result = eval(src);
+    assert_eq!(
+        result,
+        Ok(string("Hello, World")),
+        "{}",
+        pretty_print(&result)
+    );
 }

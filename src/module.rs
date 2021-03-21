@@ -1,48 +1,122 @@
+// TODO: Rename to AST?
 use std::rc::Rc;
 
 use super::checker::term;
 
 #[derive(Debug)]
-pub struct Module<'src> {
-    pub name: &'src str,
-    pub exposing: Exposing<'src>,
-    pub imports: Vec<Import<'src>>,
-    pub statements: Vec<Rc<Stmt<'src>>>,
+pub struct Module {
+    pub name: Vec<String>,
+    pub exposing: Exposing,
+    pub imports: Vec<Import>,
+    pub statements: Vec<Rc<Stmt>>,
 }
 
-#[derive(Debug)]
-pub struct Import<'src> {
-    pub module_name: &'src str,
+pub fn with_default_imports(module: &Module) -> Module {
+    log::trace!("with_default_imports");
+    let mut imports = Import::prelude().clone();
+    imports.append(&mut module.imports.clone());
+
+    Module {
+        name: module.name.clone(),
+        exposing: module.exposing.clone(),
+        imports,
+        statements: module.statements.clone(),
+    }
 }
 
-#[derive(Debug)]
-pub enum Exposing<'a> {
+#[derive(Debug, Clone)]
+pub struct Import {
+    pub module_name: Vec<String>,
+    pub exposing: Option<Exposing>,
+}
+
+impl Import {
+    pub fn prelude() -> Vec<Import> {
+        log::trace!("prelude");
+        vec![
+            Import {
+                module_name: vec!["Basics".to_string()],
+                exposing: Some(Exposing::List(vec![ExposingDetail::Operator(
+                    "+".to_string(),
+                )])),
+            },
+            Import {
+                module_name: vec!["String".to_string()],
+                exposing: None,
+            },
+        ]
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum Exposing {
     All,
-    List(Vec<ExposingDetail<'a>>),
+    List(Vec<ExposingDetail>),
+}
+
+#[derive(Debug, Clone)]
+pub enum ExposingDetail {
+    Operator(String),
+    Name(String),
+}
+
+#[derive(Debug, PartialEq, Eq, Hash, Clone)]
+pub struct LowerName {
+    pub modules: Vec<String>,
+    pub access: Vec<String>,
+}
+
+impl LowerName {
+    pub fn simple(name: String) -> LowerName {
+        LowerName {
+            modules: Vec::new(),
+            access: vec![name],
+        }
+    }
+
+    pub fn from(name: String) -> LowerName {
+        let segments = name.split('.');
+        let (modules, access) = segments
+            .into_iter()
+            .map(|str| str.to_string())
+            .partition(|name| name.starts_with(|ch| ch >= 'A' && ch <= 'Z'));
+
+        LowerName { modules, access }
+    }
+
+    pub fn to_string(&self) -> String {
+        self.modules
+            .iter()
+            .cloned()
+            .chain(self.access.iter().cloned())
+            .collect::<Vec<String>>()
+            .join(".")
+    }
+
+    pub fn without_module(&self) -> LowerName {
+        LowerName {
+            modules: vec![],
+            access: self.access.clone(),
+        }
+    }
 }
 
 #[derive(Debug)]
-pub enum ExposingDetail<'a> {
-    Operator(&'a str),
-    Name(&'a str),
-}
-
-#[derive(Debug)]
-pub enum Stmt<'a> {
+pub enum Stmt {
     Binding {
-        name: &'a str,
-        expr: Rc<Expr<'a>>,
+        name: String,
+        expr: Rc<Expr>,
     },
     Function {
-        name: &'a str,
-        args: Vec<Pattern<'a>>,
-        expr: Rc<Expr<'a>>,
+        name: String,
+        args: Vec<Pattern>,
+        expr: Rc<Expr>,
     },
     Infix {
-        operator_name: &'a str,
+        operator_name: String,
         associativity: Associativity,
         precedence: usize,
-        function_name: &'a str,
+        function_name: LowerName,
     },
 }
 
@@ -54,11 +128,11 @@ pub enum Associativity {
 }
 
 #[derive(Debug)]
-pub enum Pattern<'a> {
-    Name(&'a str),
+pub enum Pattern {
+    Name(String),
 }
 
-impl<'a> Pattern<'a> {
+impl Pattern {
     pub fn names(&self) -> Vec<String> {
         match self {
             Pattern::Name(name) => vec![name.to_string()],
@@ -73,25 +147,25 @@ impl<'a> Pattern<'a> {
 }
 
 #[derive(Debug)]
-pub enum Expr<'a> {
+pub enum Expr {
     Bool(bool),
     Integer(i32),
     Float(f32),
-    String(&'a str),
-    List(Vec<Rc<Expr<'a>>>),
+    String(String),
+    List(Vec<Rc<Expr>>),
     BinOp {
-        operator: &'a str,
-        left: Rc<Expr<'a>>,
-        right: Rc<Expr<'a>>,
+        operator: String,
+        left: Rc<Expr>,
+        right: Rc<Expr>,
     },
     If {
-        condition: Rc<Expr<'a>>,
-        then_branch: Rc<Expr<'a>>,
-        else_branch: Rc<Expr<'a>>,
+        condition: Rc<Expr>,
+        then_branch: Rc<Expr>,
+        else_branch: Rc<Expr>,
     },
     Call {
-        function_name: &'a str,
-        args: Vec<Rc<Expr<'a>>>,
+        function_name: LowerName,
+        args: Vec<Rc<Expr>>,
     },
-    VarName(&'a str),
+    VarName(LowerName),
 }
