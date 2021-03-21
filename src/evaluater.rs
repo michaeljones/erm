@@ -4,40 +4,42 @@ use log;
 use std::rc::Rc;
 
 use self::values::Value;
+use super::bindings;
+use super::bindings::Binding;
 use super::env;
-use super::function;
-use super::function::Binding;
-use super::module::{Expr, Module, Pattern, Stmt};
+use super::module::{self, Expr, Module, Pattern, Stmt};
 
 #[derive(Debug, PartialEq)]
 pub enum Error {
     UnsupportedOperation,
     UnknownFunction(String, u32),
     UnknownBinding(String),
-    FunctionError(function::Error),
+    FunctionError(bindings::Error),
     WrongArity,
+    ScopeError(env::Error),
 }
 
-pub fn evaluate<'src>(
-    module: &Module<'src>,
-    args: &'src Vec<String>,
-    environment: &env::Environment<'src>,
+pub fn evaluate(
+    module: &Module,
+    args: Vec<String>,
+    environment: &env::Environment,
 ) -> Result<Value, Error> {
-    log::trace!("Evaluator: Start");
+    log::trace!("evaluate");
 
-    let scope = env::Scope::from_module(&module);
+    let scope = env::Scope::from_module(&module).map_err(Error::ScopeError)?;
     let environment = env::add_module_scope(&environment, scope);
     if args.is_empty() {
-        match env::get_binding(&environment, "main") {
+        let mainName = module::LowerName::simple("main".to_string());
+        match env::get_binding(&environment, &mainName) {
             Some(Binding::UserBinding(expr)) => evaluate_expression(&expr, &environment),
             _ => Err(Error::UnknownBinding("main".to_string())),
         }
     } else {
         let call_main = Expr::Call {
-            function_name: "main",
+            function_name: module::LowerName::simple("main".to_string()),
             args: vec![Rc::new(Expr::List(
                 args.iter()
-                    .map(|entry| Rc::new(Expr::String(entry)))
+                    .map(|entry| Rc::new(Expr::String(String::from(entry))))
                     .collect(),
             ))],
         };
@@ -46,10 +48,7 @@ pub fn evaluate<'src>(
     }
 }
 
-fn evaluate_expression<'src>(
-    expr: &Expr<'src>,
-    environment: &env::Environment<'src>,
-) -> Result<Value, Error> {
+fn evaluate_expression(expr: &Expr, environment: &env::Environment) -> Result<Value, Error> {
     match dbg!(expr) {
         Expr::Bool(bool) => Ok(Value::Bool(*bool)),
         Expr::Integer(int) => Ok(Value::Integer(*int)),
@@ -87,9 +86,9 @@ fn evaluate_expression<'src>(
 }
 
 fn evaluate_function_call<'a, 'b, 'src: 'd, 'd>(
-    name: &str,
-    arg_exprs: &Vec<Rc<Expr<'src>>>,
-    environment: &env::Environment<'d>,
+    name: &module::LowerName,
+    arg_exprs: &Vec<Rc<Expr>>,
+    environment: &env::Environment,
 ) -> Result<Value, Error> {
     match env::get_binding(&environment, name) {
         Some(Binding::UserFunc(stmt_rc)) => match &*stmt_rc {
@@ -132,9 +131,9 @@ fn evaluate_function_call<'a, 'b, 'src: 'd, 'd>(
 
 fn evaluate_binary_expression<'a, 'b, 'src: 'd, 'd>(
     operator: &str,
-    left: &Expr<'src>,
-    right: &Expr<'src>,
-    environment: &env::Environment<'d>,
+    left: &Expr,
+    right: &Expr,
+    environment: &env::Environment,
 ) -> Result<Value, Error> {
     let left_value = evaluate_expression(left, &environment)?;
     let right_value = evaluate_expression(right, &environment)?;
@@ -159,11 +158,11 @@ fn evaluate_binary_expression<'a, 'b, 'src: 'd, 'd>(
     }
 }
 
-fn evaluate_if_expression<'a, 'b, 'src: 'd, 'd>(
-    condition: &Expr<'src>,
-    then_branch: &Expr<'src>,
-    else_branch: &Expr<'src>,
-    environment: &env::Environment<'d>,
+fn evaluate_if_expression(
+    condition: &Expr,
+    then_branch: &Expr,
+    else_branch: &Expr,
+    environment: &env::Environment,
 ) -> Result<Value, Error> {
     let condition_value = evaluate_expression(condition, &environment)?;
 

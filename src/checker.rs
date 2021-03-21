@@ -4,34 +4,34 @@ pub mod unify;
 use std::rc::Rc;
 
 use self::term::{Term, Value};
+use super::bindings::Binding;
 use super::env;
-use super::function::Binding;
-use super::module::{Expr, Module, Stmt};
+use super::module::{self, Expr, Module, Stmt};
 
 #[derive(Debug, PartialEq)]
 pub enum Error {
     UnknownBinding(String),
     UnhandledExpression(String),
     UnifyError(unify::Error),
-    UnknownFunction(String, u32),
+    UnknownFunction(module::LowerName, u32),
     UnknownOperator(String),
     UnknownVarName(String),
     ArgumentMismatch(u32),
     TooManyArguments,
     Broken(&'static str, u32),
+    ScopeError(env::Error),
 }
 
-pub fn check<'src>(
-    module: &Module<'src>,
-    environment: &env::Environment<'src>,
-) -> Result<(), Error> {
-    log::trace!("Checker: Start");
+pub fn check(module: &Module, environment: &env::Environment) -> Result<(), Error> {
+    log::trace!("check");
 
-    let scope = env::Scope::from_module(&module);
+    let scope = env::Scope::from_module(&module).map_err(Error::ScopeError)?;
     let environment = env::add_module_scope(&environment, scope);
 
+    let mainName = module::LowerName::simple("main".to_string());
+
     // let mut var_generator = VarGenerator::new();
-    match env::get_binding(&environment, "main") {
+    match env::get_binding(&environment, &mainName) {
         Some(Binding::UserBinding(expr)) => {
             // Generate Term version of Expr tree
             //
@@ -62,7 +62,13 @@ pub fn check<'src>(
                 let mut bindings = env::Bindings::new();
                 for arg in args {
                     for name in arg.names() {
-                        bindings.insert(name.clone(), Binding::UserArg(Term::Var(name.clone())));
+                        bindings.insert(
+                            module::LowerName {
+                                modules: Vec::new(),
+                                access: vec![name.clone()],
+                            },
+                            Binding::UserArg(Term::Var(name.clone())),
+                        );
                     }
                 }
 
@@ -101,8 +107,8 @@ pub fn check<'src>(
 }
 
 fn expression_to_term<'a, 'b, 'src>(
-    expr: &'a Expr<'src>,
-    environment: &'b env::Environment<'src>,
+    expr: &'a Expr,
+    environment: &'b env::Environment,
 ) -> Result<Term, Error> {
     println!("expr {:#?}", expr);
     match expr {
@@ -122,7 +128,7 @@ fn expression_to_term<'a, 'b, 'src>(
         // Want to be able to fetch 'x' from the scope where 'x' is an typed or untyped
         // argument to the function that we might be in the scope of
         {
-            match env::get_binding(&environment, name) {
+            match env::get_binding(&environment, &module::LowerName::simple(name.to_string())) {
                 Some(Binding::BuiltInFunc(func)) => {
                     // TODO: Don't resolve with fake args - just resolve directly to a term definition
                     // for a function
@@ -147,9 +153,9 @@ fn expression_to_term<'a, 'b, 'src>(
 
 fn binary_expression_to_term<'a, 'b, 'src>(
     operator_name: &'src str,
-    left: &Rc<Expr<'src>>,
-    right: &Rc<Expr<'src>>,
-    environment: &'b env::Environment<'src>,
+    left: &Rc<Expr>,
+    right: &Rc<Expr>,
+    environment: &'b env::Environment,
 ) -> Result<Term, Error> {
     // println!("{:#?}", environment);
     if let Some(operator) = env::get_operator(&environment, operator_name) {
@@ -172,15 +178,9 @@ fn binary_expression_to_term<'a, 'b, 'src>(
                     // TODO: Check with the args that we have
                     // let args = vec![left.clone(), right.clone()];
                     // resolve_function_term(&signature, &args, &environment)
-                    Err(Error::UnknownFunction(
-                        operator.function_name.to_string(),
-                        line!(),
-                    ))
+                    Err(Error::UnknownFunction(operator.function_name, line!()))
                 }
-                _ => Err(Error::UnknownFunction(
-                    operator.function_name.to_string(),
-                    line!(),
-                )),
+                _ => Err(Error::UnknownFunction(operator.function_name, line!())),
             },
             Binding::UserBinding(expr_rc) => {
                 let signature_term = expression_to_term(&expr_rc, &environment)?;
@@ -202,10 +202,7 @@ fn binary_expression_to_term<'a, 'b, 'src>(
                     line!(),
                 ))
             }
-            _ => Err(Error::UnknownFunction(
-                operator.function_name.to_string(),
-                line!(),
-            )),
+            _ => Err(Error::UnknownFunction(operator.function_name, line!())),
         }
     } else {
         Err(Error::UnknownOperator(operator_name.to_string()))
@@ -213,9 +210,9 @@ fn binary_expression_to_term<'a, 'b, 'src>(
 }
 
 fn call_to_term<'a, 'b, 'src>(
-    function_name: &'src str,
-    call_args: &'a Vec<Rc<Expr<'src>>>,
-    environment: &'b env::Environment<'src>,
+    function_name: &'src module::LowerName,
+    call_args: &'a Vec<Rc<Expr>>,
+    environment: &'b env::Environment,
 ) -> Result<Term, Error> {
     match env::get_binding(&environment, function_name) {
         Some(Binding::UserFunc(stmt_rc)) => match &*stmt_rc {
@@ -239,7 +236,13 @@ fn call_to_term<'a, 'b, 'src>(
                 let mut bindings = env::Bindings::new();
                 for arg in args {
                     for name in arg.names() {
-                        bindings.insert(name.clone(), Binding::UserArg(Term::Var(name.clone())));
+                        bindings.insert(
+                            module::LowerName {
+                                modules: Vec::new(),
+                                access: vec![name.clone()],
+                            },
+                            Binding::UserArg(Term::Var(name.clone())),
+                        );
                     }
                 }
                 let scope = env::Scope::from_bindings(bindings);
@@ -274,7 +277,7 @@ fn call_to_term<'a, 'b, 'src>(
                     &environment
                 ))
             }
-            _ => Err(Error::UnknownFunction(function_name.to_string(), line!())),
+            _ => Err(Error::UnknownFunction(function_name.clone(), line!())),
         },
         Some(Binding::BuiltInFunc(func)) => {
             let signature_term = func.term();
@@ -293,7 +296,7 @@ fn call_to_term<'a, 'b, 'src>(
         }
         value => {
             println!("value {:#?}", value);
-            Err(Error::UnknownFunction(function_name.to_string(), line!()))
+            Err(Error::UnknownFunction(function_name.clone(), line!()))
         }
     }
 }
@@ -304,7 +307,7 @@ fn call_to_term<'a, 'b, 'src>(
 fn resolve_function_and_args<'a, 'b, 'src>(
     signature_term: &Term,
     arg_terms: &[Term],
-    environment: &'b env::Environment<'src>,
+    environment: &'b env::Environment,
 ) -> Result<Term, Error> {
     println!("signature_term {:#?}", signature_term);
     println!("arg_terms {:#?}", arg_terms);
@@ -338,10 +341,10 @@ fn resolve_function_and_args<'a, 'b, 'src>(
 }
 
 fn if_expression_to_term<'a, 'b, 'src>(
-    condition: &'a Expr<'src>,
-    then_branch: &'a Expr<'src>,
-    else_branch: &'a Expr<'src>,
-    environment: &'b env::Environment<'src>,
+    condition: &'a Expr,
+    then_branch: &'a Expr,
+    else_branch: &'a Expr,
+    environment: &'b env::Environment,
 ) -> Result<Term, Error> {
     // Infer condition
     let condition_term = expression_to_term(condition, &environment)?;

@@ -11,10 +11,10 @@ pub enum Error {
 }
 
 #[derive(Clone)]
-pub enum Binding<'src> {
+pub enum Binding {
     BuiltInFunc(Rc<dyn Func>),
-    UserFunc(Rc<Stmt<'src>>),
-    UserBinding(Rc<Expr<'src>>),
+    UserFunc(Rc<Stmt>),
+    UserBinding(Rc<Expr>),
     // TODO: Feels wrong to have a 'term ' in here with other things
     UserArg(term::Term),
     // TODO: Unsure about this entry especially as it means we need to make Value 'Clone' which
@@ -22,7 +22,7 @@ pub enum Binding<'src> {
     Value(values::Value),
 }
 
-impl<'src> std::fmt::Debug for Binding<'src> {
+impl std::fmt::Debug for Binding {
     // Implemented because we can't derive Debug for 'dyn Func'
     // TODO: Add more detail
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -39,6 +39,6 @@ impl<'src> std::fmt::Debug for Binding<'src> {
 }
 
 pub trait Func {
-    fn call<'a>(&self, args: Vec<values::Value>) -> Result<values::Value, Error>;
+    fn call(&self, args: Vec<values::Value>) -> Result<values::Value, Error>;
     fn term(&self) -> term::Term;
 }

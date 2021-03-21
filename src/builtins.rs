@@ -1,6 +1,6 @@
+use super::bindings::{Error, Func};
 use super::checker::term;
 use super::evaluater::values;
-use super::function::{Error, Func};
 
 // stringFromInt
 pub struct StringFromInt {}

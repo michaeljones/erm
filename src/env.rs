@@ -1,46 +1,134 @@
 use std::collections::HashMap;
+use std::io::Read;
 use std::rc::Rc;
 
+use super::bindings::Binding;
 use super::builtins;
-use super::function::Binding;
-use super::module::{Associativity, Module, Stmt};
+use super::module::{self, Associativity, Module, Stmt};
+use super::parser;
+use crate::parse_source;
 
 #[derive(Debug, Clone)]
-pub struct Operator<'src> {
-    pub operator_name: &'src str,
+pub struct Operator {
+    pub operator_name: String,
     pub associativity: Associativity,
     pub precedence: usize,
-    pub function_name: &'src str,
-    pub binding: Binding<'src>,
+    pub function_name: module::LowerName,
+    pub binding: Binding,
 }
 
-pub type Bindings<'src> = HashMap<String, Binding<'src>>;
-type Operators<'src> = HashMap<String, Operator<'src>>;
+pub type Bindings = HashMap<module::LowerName, Binding>;
+type Operators = HashMap<String, Operator>;
 
 #[derive(Debug)]
-pub struct Scope<'src> {
-    pub bindings: Bindings<'src>,
-    pub operators: Operators<'src>,
+pub struct Scope {
+    pub bindings: Bindings,
+    pub operators: Operators,
 }
 
 #[derive(Debug)]
-pub struct Environment<'src> {
-    pub module_scopes: im::Vector<Rc<Scope<'src>>>,
-    pub local_scopes: im::Vector<Rc<Scope<'src>>>,
+pub struct ModuleScope {
+    pub name: String,
+    pub internal_scopes: im::Vector<Rc<ModuleScope>>,
+    pub main_scope: Scope,
+    pub exposing: module::Exposing,
 }
 
-impl<'src> Scope<'src> {
-    pub fn from_module(module: &Module<'src>) -> Self {
-        let bindings: Bindings<'src> = module
+impl ModuleScope {
+    pub fn get_binding(&self, target_name: &module::LowerName) -> Option<Binding> {
+        log::trace!(
+            "ModuleScope:get_binding: {:?} from {}",
+            &target_name,
+            &self.name
+        );
+
+        // TODO: Filter by exposing
+        if let Some(value) = self.main_scope.bindings.get(target_name) {
+            return Some(value.clone());
+        }
+
+        None
+    }
+
+    pub fn get_operator(&self, target_name: &str) -> Option<Operator> {
+        log::trace!(
+            "ModuleScope:get_operator: {} from {}",
+            &target_name,
+            &self.name
+        );
+
+        // TODO: Filter by exposing
+        if let Some(value) = self.main_scope.operators.get(target_name) {
+            return Some(value.clone());
+        }
+
+        // Backwards through list to check lowest imports first
+        for scope in self.internal_scopes.iter().rev() {
+            // TODO: Filter by exposing
+            if let Some(value) = &scope.get_operator(target_name) {
+                return Some(value.clone());
+            }
+        }
+
+        None
+    }
+}
+
+#[derive(Debug)]
+pub struct Environment {
+    pub module_scopes: im::Vector<Rc<ModuleScope>>,
+    pub local_scopes: im::Vector<Rc<Scope>>,
+}
+
+#[derive(Debug, PartialEq)]
+pub enum Error {
+    FileNotFound(String),
+    FailedToRead(String),
+    FailedToParse(String, parser::Error),
+}
+
+impl Scope {
+    pub fn from_module(module: &Module) -> Result<ModuleScope, Error> {
+        log::trace!("from_module {}", &module.name);
+        let internal_scopes: im::Vector<Rc<ModuleScope>> = module
+            .imports
+            .iter()
+            .map(|import| {
+                // Read & parse import.name
+                let filename = format!("core/{}.elm", &import.module_name);
+                let mut file = std::fs::File::open(&filename)
+                    .map_err(|_| Error::FileNotFound(filename.clone()))?;
+
+                let mut source = String::new();
+                file.read_to_string(&mut source)
+                    .map_err(|_| Error::FailedToRead(filename.clone()))?;
+
+                let module = parse_source(source)
+                    .map_err(|err| Error::FailedToParse(filename.clone(), err))?;
+
+                // Create a scope from it maybe?
+                Self::from_module(&module).map(Rc::new)
+            })
+            .collect::<Result<_, _>>()?;
+
+        let bindings: Bindings = module
             .statements
             .iter()
             .flat_map(|entry| match &**entry {
-                Stmt::Binding { name, expr } => {
-                    Some((name.to_string(), Binding::UserBinding(expr.clone())))
-                }
-                Stmt::Function { name, .. } => {
-                    Some((name.to_string(), Binding::UserFunc(entry.clone())))
-                }
+                Stmt::Binding { name, expr } => Some((
+                    module::LowerName {
+                        modules: Vec::new(),
+                        access: vec![name.to_string()],
+                    },
+                    Binding::UserBinding(expr.clone()),
+                )),
+                Stmt::Function { name, .. } => Some((
+                    module::LowerName {
+                        modules: Vec::new(),
+                        access: vec![name.to_string()],
+                    },
+                    Binding::UserFunc(entry.clone()),
+                )),
                 _ => None,
             })
             .collect();
@@ -54,14 +142,14 @@ impl<'src> Scope<'src> {
                     associativity,
                     precedence,
                     function_name,
-                } => bindings.get(&function_name.to_string()).map(|binding| {
+                } => bindings.get(&function_name).map(|binding| {
                     (
                         operator_name.to_string(),
                         Operator {
-                            operator_name,
+                            operator_name: operator_name.clone(),
                             associativity: associativity.clone(),
                             precedence: *precedence,
-                            function_name,
+                            function_name: function_name.clone(),
                             // Store the binding for the operator's function along with the
                             // operator for easy access with checking & evaluating
                             binding: binding.clone(),
@@ -73,13 +161,19 @@ impl<'src> Scope<'src> {
             })
             .collect();
 
-        Scope {
-            bindings,
-            operators,
-        }
+        Ok(ModuleScope {
+            name: module.name.clone(),
+            internal_scopes,
+            main_scope: Scope {
+                bindings,
+                operators,
+            },
+            exposing: module.exposing.clone(),
+        })
     }
 
-    pub fn from_bindings(bindings: Bindings<'src>) -> Self {
+    pub fn from_bindings(bindings: Bindings) -> Self {
+        log::trace!("from_bindings");
         Scope {
             bindings,
             operators: HashMap::new(),
@@ -87,11 +181,10 @@ impl<'src> Scope<'src> {
     }
 }
 
-pub fn get_binding<'src>(
-    environment: &Environment<'src>,
-    target_name: &str,
-) -> Option<Binding<'src>> {
-    match target_name {
+pub fn get_binding(environment: &Environment, target_name: &module::LowerName) -> Option<Binding> {
+    log::trace!("get_binding: {:?}", &target_name);
+    let fullName = target_name.to_string();
+    match fullName.as_str() {
         "stringFromInt" => return Some(Binding::BuiltInFunc(Rc::new(builtins::StringFromInt {}))),
         "stringFromBool" => {
             return Some(Binding::BuiltInFunc(Rc::new(builtins::StringFromBool {})))
@@ -115,7 +208,7 @@ pub fn get_binding<'src>(
     }
 
     for scope in &environment.module_scopes {
-        if let Some(value) = scope.bindings.get(target_name) {
+        if let Some(value) = scope.get_binding(target_name) {
             return Some(value.clone());
         }
     }
@@ -123,10 +216,8 @@ pub fn get_binding<'src>(
     None
 }
 
-pub fn get_operator<'a, 'src>(
-    environment: &Environment<'src>,
-    target_name: &str,
-) -> Option<Operator<'src>> {
+pub fn get_operator<'a, 'src>(environment: &Environment, target_name: &str) -> Option<Operator> {
+    log::trace!("get_operator: {}", &target_name);
     for scope in &environment.local_scopes {
         if let Some(value) = scope.operators.get(target_name) {
             return Some(value.clone());
@@ -134,7 +225,7 @@ pub fn get_operator<'a, 'src>(
     }
 
     for scope in &environment.module_scopes {
-        if let Some(value) = scope.operators.get(target_name) {
+        if let Some(value) = scope.get_operator(target_name) {
             return Some(value.clone());
         }
     }
@@ -142,10 +233,8 @@ pub fn get_operator<'a, 'src>(
     None
 }
 
-pub fn add_module_scope<'b>(
-    environment: &Environment<'b>,
-    new_scope: Scope<'b>,
-) -> Environment<'b> {
+pub fn add_module_scope(environment: &Environment, new_scope: ModuleScope) -> Environment {
+    log::trace!("add_module_scope");
     let mut new_scopes = environment.module_scopes.clone();
     new_scopes.push_front(Rc::new(new_scope));
 
@@ -155,7 +244,8 @@ pub fn add_module_scope<'b>(
     }
 }
 
-pub fn add_local_scope<'b>(environment: &Environment<'b>, new_scope: Scope<'b>) -> Environment<'b> {
+pub fn add_local_scope(environment: &Environment, new_scope: Scope) -> Environment {
+    log::trace!("add_local_scope");
     let mut new_scopes = environment.local_scopes.clone();
     new_scopes.push_front(Rc::new(new_scope));
 
@@ -164,7 +254,9 @@ pub fn add_local_scope<'b>(environment: &Environment<'b>, new_scope: Scope<'b>) 
         local_scopes: new_scopes,
     }
 }
-pub fn new_local_scope<'b>(environment: &Environment<'b>, new_scope: Scope<'b>) -> Environment<'b> {
+
+pub fn new_local_scope(environment: &Environment, new_scope: Scope) -> Environment {
+    log::trace!("new_local_scope");
     Environment {
         module_scopes: environment.module_scopes.clone(),
         local_scopes: im::vector![Rc::new(new_scope)],
