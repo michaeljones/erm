@@ -206,13 +206,15 @@ pub fn get_binding(environment: &Environment, target_name: &module::LowerName) -
     let full_name = target_name.to_string();
     log::trace!("get_binding: {:?}", full_name);
     match full_name.as_str() {
-        "Elm.Kernel.String.fromInt" => {
-            return Some(Binding::BuiltInFunc(Rc::new(builtins::StringFromInt {})))
-        }
         "stringFromBool" => {
             return Some(Binding::BuiltInFunc(Rc::new(builtins::StringFromBool {})))
         }
-        "stringJoin" => return Some(Binding::BuiltInFunc(Rc::new(builtins::StringJoin {}))),
+        "Elm.Kernel.String.fromInt" => {
+            return Some(Binding::BuiltInFunc(Rc::new(builtins::StringFromInt {})))
+        }
+        "Elm.Kernel.String.join" => {
+            return Some(Binding::BuiltInFunc(Rc::new(builtins::StringJoin {})))
+        }
         "Elm.Kernel.Basics.add" => return Some(Binding::BuiltInFunc(Rc::new(builtins::Add {}))),
         "Elm.Kernel.Basics.sub" => return Some(Binding::BuiltInFunc(Rc::new(builtins::Sub {}))),
         "Elm.Kernel.Basics.mul" => return Some(Binding::BuiltInFunc(Rc::new(builtins::Mul {}))),

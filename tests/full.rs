@@ -62,25 +62,7 @@ fn pretty_print(result: &Result<Value, Error>) -> String {
 }
 
 fn eval(string: &str) -> Result<Value, Error> {
-    let _ = env_logger::builder().is_test(true).try_init();
-
-    log::trace!("eval");
-
-    let src = unindent(&string);
-    let module =
-        erm::parse_source(src).map_err(|err| Error::ParserError(err, string.to_string()))?;
-
-    let module = module::with_default_imports(&module); // Something with the imports added
-
-    let scope = env::Scope::from_module(&module).map_err(Error::ScopeError)?;
-
-    let scopes = vector![Rc::new(scope)];
-    let environment = env::Environment {
-        module_scopes: scopes,
-        local_scopes: vector![],
-    };
-    checker::check(&module, &environment).map_err(Error::CheckError)?;
-    evaluater::evaluate(&module, Vec::new(), &environment).map_err(Error::EvaluateError)
+    eval_with_args(string, Vec::new())
 }
 
 fn eval_with_args(string: &str, args: Vec<String>) -> Result<Value, Error> {
@@ -92,10 +74,9 @@ fn eval_with_args(string: &str, args: Vec<String>) -> Result<Value, Error> {
     let module =
         erm::parse_source(src).map_err(|err| Error::ParserError(err, string.to_string()))?;
 
-    let basics =
-        erm::parse_basics().map_err(|err| Error::ParserError(err, erm::basics_source()))?;
+    let module = module::with_default_imports(&module);
 
-    let scope = env::Scope::from_module(&basics).map_err(Error::ScopeError)?;
+    let scope = env::Scope::from_module(&module).map_err(Error::ScopeError)?;
     let scopes = vector![Rc::new(scope)];
     let environment = env::Environment {
         module_scopes: scopes,
@@ -281,7 +262,7 @@ fn main_args() {
     let src = r#"
         module Main exposing (..)
         main args =
-          stringJoin args
+          String.join args
         "#;
     let result = eval_with_args(src, vec!["Hello".to_string(), " world".to_string()]);
     assert_eq!(
