@@ -125,7 +125,7 @@ fn string_from_int() {
     let src = "
         module Main exposing (..)
         main =
-          stringFromInt 5
+          String.fromInt 5
         ";
     let result = eval(src);
     assert_eq!(result, Ok(string("5")));
@@ -136,7 +136,7 @@ fn add_ints() {
     let src = "
         module Main exposing (..)
         main =
-          stringFromInt (1 + 3)
+          String.fromInt (1 + 3)
         ";
     let result = eval(src);
     assert_eq!(result, Ok(string("4")));
@@ -147,7 +147,7 @@ fn add_int_and_string_fails() {
     let src = r#"
         module Main exposing (..)
         main =
-          stringFromInt (1 + "string")
+          String.fromInt (1 + "string")
         "#;
     let result = eval(src);
     assert_eq!(
@@ -166,7 +166,7 @@ fn arithmetic_precedence() {
     let module = "
         module Main exposing (..)
         main =
-          stringFromInt (10 - 11 * 12 + 13)
+          String.fromInt (10 - 11 * 12 + 13)
         ";
     assert_eq!(eval(module), Ok(Value::String("-109".to_string())));
 }
@@ -176,7 +176,7 @@ fn arithmetic_parenthesis() {
     let src = "
         module Main exposing (..)
         main =
-          stringFromInt ((10 - 11) * (12 + 13))
+          String.fromInt ((10 - 11) * (12 + 13))
         ";
     let result = eval(src);
     assert_eq!(result, Ok(string("-25")), "{}", pretty_print(&result));
@@ -231,7 +231,7 @@ fn if_statement_multi_line() {
         module Main exposing (..)
         main =
           if False then
-            stringFromInt 5
+            String.fromInt 5
           else
             "4"
         "#;
@@ -298,7 +298,7 @@ fn function_call_simple() {
         module Main exposing (..)
         add1 x = x + 1
         main =
-          stringFromInt (add1 5)
+          String.fromInt (add1 5)
         "#;
     let result = eval(src);
     assert_eq!(result, Ok(string("6")), "{}", pretty_print(&result));
@@ -310,7 +310,7 @@ fn function_call_with_paren_args() {
         module Main exposing (..)
         addTogether x y = x + y
         main =
-          stringFromInt (addTogether (addTogether 2 5) 8)
+          String.fromInt (addTogether (addTogether 2 5) 8)
         "#;
     let result = eval(src);
     assert_eq!(result, Ok(string("15")), "{}", pretty_print(&result));
@@ -324,7 +324,7 @@ fn function_clashes_with_operator_func() {
         module Main exposing (..)
         add x y = x + y
         main =
-          stringFromInt (add 2 5)
+          String.fromInt (add 2 5)
         "#;
     let result = eval(src);
     assert_eq!(result, Ok(string("7")), "{}", pretty_print(&result));
@@ -338,7 +338,7 @@ fn function_calls_function() {
         sub1 y = y - 1
         add1 x = sub1 x + 2
         main =
-          stringFromInt (add1 2)
+          String.fromInt (add1 2)
         "#;
     let result = eval(src);
     assert_eq!(result, Ok(string("3")), "{}", pretty_print(&result));
@@ -352,7 +352,7 @@ fn function_calls_same_args() {
         sub1 x = x - 1
         add1 x = sub1 x + 2
         main =
-          stringFromInt (add1 2)
+          String.fromInt (add1 2)
         "#;
     let result = eval(src);
     assert_eq!(result, Ok(string("3")), "{}", pretty_print(&result));
