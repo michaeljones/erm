@@ -206,9 +206,6 @@ pub fn get_binding(environment: &Environment, target_name: &module::LowerName) -
     let full_name = target_name.to_string();
     log::trace!("get_binding: {:?}", full_name);
     match full_name.as_str() {
-        "stringFromBool" => {
-            return Some(Binding::BuiltInFunc(Rc::new(builtins::StringFromBool {})))
-        }
         "Elm.Kernel.String.fromInt" => {
             return Some(Binding::BuiltInFunc(Rc::new(builtins::StringFromInt {})))
         }

@@ -165,24 +165,30 @@ fn arithmetic_parenthesis() {
 
 #[test]
 fn int_comparison_gt() {
-    let src = "
+    let src = r#"
         module Main exposing (..)
+        stringFromBool boolean =
+          if boolean then
+            "True"
+          else
+            "False"
         main =
           stringFromBool (8 + 12 > 7 + 5)
-        ";
+        "#;
     let result = eval(src);
-    assert_eq!(result, Ok(string("true")), "{}", pretty_print(&result));
+    assert_eq!(result, Ok(string("True")), "{}", pretty_print(&result));
 }
 
 #[test]
 fn int_comparison_lt() {
-    let src = "
+    let src = r#"
         module Main exposing (..)
+        stringFromBool boolean = if boolean then "True" else "False"
         main =
           stringFromBool (8 + 12 < 7 + 5)
-        ";
+        "#;
     let result = eval(src);
-    assert_eq!(result, Ok(string("false")), "{}", pretty_print(&result));
+    assert_eq!(result, Ok(string("False")), "{}", pretty_print(&result));
 }
 
 #[test]

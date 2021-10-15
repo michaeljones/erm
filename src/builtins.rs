@@ -25,29 +25,6 @@ impl Func for StringFromInt {
     }
 }
 
-// stringFromBool
-pub struct StringFromBool {}
-
-impl Func for StringFromBool {
-    fn call<'a>(&self, args: Vec<values::Value>) -> Result<values::Value, Error> {
-        if args.len() != 1 {
-            return Err(Error::WrongArity);
-        }
-
-        match args.first() {
-            Some(values::Value::Bool(bool)) => Ok(values::Value::String(bool.to_string())),
-            _ => Err(Error::WrongArgumentType),
-        }
-    }
-
-    fn term(&self) -> term::Term {
-        term::Term::Function(
-            Box::new(term::Term::Constant(term::Value::Bool)),
-            Box::new(term::Term::Constant(term::Value::String)),
-        )
-    }
-}
-
 // stringJoin
 pub struct StringJoin {}
 

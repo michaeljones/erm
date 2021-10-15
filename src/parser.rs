@@ -12,6 +12,7 @@ pub enum Error {
         expected: String,
         found: String,
         range: Range,
+        line: u32,
     },
     UnexpectedEnd,
     Indent {
@@ -166,6 +167,7 @@ fn parse_statements<'a>(mut iter: &mut TokenIter<'a>) -> Result<Vec<Rc<Stmt>>, E
                     found: token.to_string(),
                     expected: "Expression token".to_string(),
                     range: range.clone(),
+                    line: line!(),
                 })
             }
             None => break,
@@ -219,6 +221,7 @@ fn extract_precendence<'a>(stream_token: &Option<SrcToken<'a>>) -> Result<usize,
             found: token.to_string(),
             expected: Token::UpperName("").to_string(),
             range: range.clone(),
+            line: line!(),
         }),
         None => Err(Error::UnexpectedEnd),
     }
@@ -462,6 +465,7 @@ fn parse_contained_expression<'a, 'b>(
             found: token.to_string(),
             expected: "Expression token".to_string(),
             range: range.clone(),
+            line: line!(),
         }),
         None => Err(Error::UnexpectedEnd),
     }
@@ -489,9 +493,11 @@ fn parse_var_or_call<'a>(
 
     loop {
         match iter.peek() {
-            Some((Token::Operator(_), _range)) | Some((Token::CloseParen, _range)) => {
-                // If we've found an operator or closed paren then we want to exit and let the
-                // parse_expression code handle it
+            Some((Token::Operator(_), _range))
+            | Some((Token::CloseParen, _range))
+            | Some((Token::Then, _range)) => {
+                // On certain tokens we know we've finish this 'var or call' and so we can exit and
+                // let the parse_expression code handle it
                 break;
             }
             _ => {}
@@ -569,6 +575,7 @@ fn matches<'a>(stream_token: &Option<SrcToken<'a>>, match_token: Token<'a>) -> R
                     found: token.to_string(),
                     expected: match_token.to_string(),
                     range: range.clone(),
+                    line: line!(),
                 })
             }
         }
@@ -583,6 +590,7 @@ fn matches_space<'a>(stream_token: &Option<SrcToken<'a>>) -> Result<(), Error> {
             found: token.to_string(),
             expected: "Space".to_string(),
             range: range.clone(),
+            line: line!(),
         }),
         None => Err(Error::UnexpectedEnd),
     }
@@ -597,6 +605,7 @@ fn extract_upper_name<'a>(stream_token: &Option<SrcToken<'a>>) -> Result<Vec<Str
             found: token.to_string(),
             expected: Token::UpperName("").to_string(),
             range: range.clone(),
+            line: line!(),
         }),
         None => Err(Error::UnexpectedEnd),
     }
@@ -609,6 +618,7 @@ fn extract_lower_name<'a>(stream_token: &Option<SrcToken<'a>>) -> Result<LowerNa
             found: token.to_string(),
             expected: Token::LowerName("").to_string(),
             range: range.clone(),
+            line: line!(),
         }),
         None => Err(Error::UnexpectedEnd),
     }
@@ -621,6 +631,7 @@ fn extract_operator<'a>(stream_token: &Option<SrcToken<'a>>) -> Result<&'a str, 
             found: token.to_string(),
             expected: Token::Operator("").to_string(),
             range: range.clone(),
+            line: line!(),
         }),
         None => Err(Error::UnexpectedEnd),
     }
@@ -633,6 +644,7 @@ fn extract_pattern_name<'a>(stream_token: &Option<SrcToken<'a>>) -> Result<Patte
             found: token.to_string(),
             expected: Token::LowerName("").to_string(),
             range: range.clone(),
+            line: line!(),
         }),
         None => Err(Error::UnexpectedEnd),
     }
@@ -647,6 +659,7 @@ fn extract_associativity<'a>(stream_token: &Option<SrcToken<'a>>) -> Result<Asso
             found: token.to_string(),
             expected: "LowerName with 'left', 'right', or 'non".to_string(),
             range: range.clone(),
+            line: line!(),
         }),
         None => Err(Error::UnexpectedEnd),
     }
