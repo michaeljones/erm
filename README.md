@@ -10,6 +10,27 @@ It is primarily a learning exercise.
 
 It does not really work at the moment.
 
+- [ ] Explicit import
+- [ ] List syntax
+- [ ] Tuple syntax
+- [ ] Let-in blocks
+- [ ] Generic number handling
+- [ ] Underscore to ignore
+- [ ] Function type annotations
+- [ ] Type alias declarations
+- [ ] Type declarations
+- [ ] Record syntax
+- [ ] Record updatn syntax
+- [ ] Case statement
+- [ ] Pattern matching
+- [ ] Destructuring
+- [ ] Generic 'appendable' handling
+
+No current plans to support:
+
+- Ports
+- WebGL syntax
+
 ## Notes
 
 - Explore the idea of supporting a dhall like approach to generating config. Perhaps a 'Config'
@@ -24,6 +45,10 @@ RUST_LOG=trace cargo test -- --nocapture
 ```
 
 ## Links
+
+### Elm Resources
+- [Full syntax](https://github.com/pdamoc/elm-syntax-sscce/blob/main/src/Main.elm)
+- [Prelude](https://github.com/elm/compiler/blob/770071accf791e8171440709effe71e78a9ab37c/compiler/src/Elm/Compiler/Imports.hs#L20-L33)
 
 ### Type Inference
 
