@@ -4,16 +4,16 @@ pub mod unify;
 use std::rc::Rc;
 
 use self::term::{Term, Value};
+use super::ast::{self, Expr, Module, Stmt};
 use super::bindings::Binding;
 use super::env;
-use super::module::{self, Expr, Module, Stmt};
 
 #[derive(Debug, PartialEq)]
 pub enum Error {
     UnknownBinding(String),
     UnhandledExpression(String),
     UnifyError(unify::Error),
-    UnknownFunction(module::LowerName, u32),
+    UnknownFunction(ast::LowerName, u32),
     UnknownOperator(String),
     UnknownVarName(String),
     ArgumentMismatch(u32),
@@ -28,7 +28,7 @@ pub fn check(module: &Module, environment: &env::Environment) -> Result<(), Erro
     let scope = env::Scope::from_module(&module).map_err(Error::ScopeError)?;
     let environment = env::add_module_scope(&environment, scope);
 
-    let main_name = module::LowerName::simple("main".to_string());
+    let main_name = ast::LowerName::simple("main".to_string());
 
     // let mut var_generator = VarGenerator::new();
     match env::get_binding(&environment, &main_name) {
@@ -63,7 +63,7 @@ pub fn check(module: &Module, environment: &env::Environment) -> Result<(), Erro
                 for arg in args {
                     for name in arg.names() {
                         bindings.insert(
-                            module::LowerName {
+                            ast::LowerName {
                                 modules: Vec::new(),
                                 access: vec![name.clone()],
                             },
@@ -128,7 +128,7 @@ fn expression_to_term<'a, 'b, 'src>(
         // Want to be able to fetch 'x' from the scope where 'x' is an typed or untyped
         // argument to the function that we might be in the scope of
         {
-            match env::get_binding(&environment, &module::LowerName::simple(name.to_string())) {
+            match env::get_binding(&environment, &ast::LowerName::simple(name.to_string())) {
                 Some(Binding::BuiltInFunc(func)) => {
                     // TODO: Don't resolve with fake args - just resolve directly to a term definition
                     // for a function
@@ -210,7 +210,7 @@ fn binary_expression_to_term<'a, 'b, 'src>(
 }
 
 fn call_to_term<'a, 'b, 'src>(
-    function_name: &'src module::LowerName,
+    function_name: &'src ast::LowerName,
     call_args: &'a Vec<Rc<Expr>>,
     environment: &'b env::Environment,
 ) -> Result<Term, Error> {
@@ -237,7 +237,7 @@ fn call_to_term<'a, 'b, 'src>(
                 for arg in args {
                     for name in arg.names() {
                         bindings.insert(
-                            module::LowerName {
+                            ast::LowerName {
                                 modules: Vec::new(),
                                 access: vec![name.clone()],
                             },

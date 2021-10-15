@@ -3,8 +3,8 @@ mod indent;
 use std::convert::TryFrom;
 use std::rc::Rc;
 
+use super::ast::*;
 use super::lexer::{Range, SrcToken, Token, TokenIter};
-use super::module::*;
 
 #[derive(Debug, PartialEq)]
 pub enum Error {

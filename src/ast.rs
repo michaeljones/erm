@@ -1,4 +1,3 @@
-// TODO: Rename to AST?
 use std::rc::Rc;
 
 use super::checker::term;

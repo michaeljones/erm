@@ -4,10 +4,10 @@ use log;
 use std::rc::Rc;
 
 use self::values::Value;
+use super::ast::{self, Expr, Module, Pattern, Stmt};
 use super::bindings;
 use super::bindings::Binding;
 use super::env;
-use super::module::{self, Expr, Module, Pattern, Stmt};
 
 #[derive(Debug, PartialEq)]
 pub enum Error {
@@ -29,14 +29,14 @@ pub fn evaluate(
     let scope = env::Scope::from_module(&module).map_err(Error::ScopeError)?;
     let environment = env::add_module_scope(&environment, scope);
     if args.is_empty() {
-        let main_name = module::LowerName::simple("main".to_string());
+        let main_name = ast::LowerName::simple("main".to_string());
         match env::get_binding(&environment, &main_name) {
             Some(Binding::UserBinding(expr)) => evaluate_expression(&expr, &environment),
             _ => Err(Error::UnknownBinding("main".to_string())),
         }
     } else {
         let call_main = Expr::Call {
-            function_name: module::LowerName::simple("main".to_string()),
+            function_name: ast::LowerName::simple("main".to_string()),
             args: vec![Rc::new(Expr::List(
                 args.iter()
                     .map(|entry| Rc::new(Expr::String(String::from(entry))))
@@ -86,7 +86,7 @@ fn evaluate_expression(expr: &Expr, environment: &env::Environment) -> Result<Va
 }
 
 fn evaluate_function_call<'a, 'b, 'src: 'd, 'd>(
-    name: &module::LowerName,
+    name: &ast::LowerName,
     arg_exprs: &Vec<Rc<Expr>>,
     environment: &env::Environment,
 ) -> Result<Value, Error> {
@@ -104,7 +104,7 @@ fn evaluate_function_call<'a, 'b, 'src: 'd, 'd>(
                         .map(|(Pattern::Name(name), expr)| {
                             evaluate_expression(expr, &environment).map(|value| {
                                 (
-                                    module::LowerName::simple(name.to_string()),
+                                    ast::LowerName::simple(name.to_string()),
                                     Binding::Value(value),
                                 )
                             })

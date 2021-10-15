@@ -13,12 +13,12 @@ use codespan_reporting::term::termcolor::Buffer;
 use std::rc::Rc;
 use unindent::unindent;
 
+use erm::ast;
 use erm::checker::{self, unify};
 use erm::env;
 use erm::evaluater;
 use erm::evaluater::values::Value;
 use erm::lexer::Range;
-use erm::module;
 use erm::parser;
 
 #[derive(Debug, PartialEq)]
@@ -74,7 +74,7 @@ fn eval_with_args(string: &str, args: Vec<String>) -> Result<Value, Error> {
     let module =
         erm::parse_source(src).map_err(|err| Error::ParserError(err, string.to_string()))?;
 
-    let module = module::with_default_imports(&module);
+    let module = ast::with_default_imports(&module);
 
     let scope = env::Scope::from_module(&module).map_err(Error::ScopeError)?;
     let scopes = vector![Rc::new(scope)];

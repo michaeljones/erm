@@ -2,9 +2,9 @@ use std::collections::HashMap;
 use std::io::Read;
 use std::rc::Rc;
 
+use super::ast::{self, Associativity, Module, Stmt};
 use super::bindings::Binding;
 use super::builtins;
-use super::module::{self, Associativity, Module, Stmt};
 use super::parser;
 use crate::parse_source;
 
@@ -13,11 +13,11 @@ pub struct Operator {
     pub operator_name: String,
     pub associativity: Associativity,
     pub precedence: usize,
-    pub function_name: module::LowerName,
+    pub function_name: ast::LowerName,
     pub binding: Binding,
 }
 
-pub type Bindings = HashMap<module::LowerName, Binding>;
+pub type Bindings = HashMap<ast::LowerName, Binding>;
 type Operators = HashMap<String, Operator>;
 
 #[derive(Debug)]
@@ -31,11 +31,11 @@ pub struct ModuleScope {
     pub name: Vec<String>,
     pub internal_scopes: im::Vector<Rc<ModuleScope>>,
     pub main_scope: Scope,
-    pub exposing: module::Exposing,
+    pub exposing: ast::Exposing,
 }
 
 impl ModuleScope {
-    pub fn get_binding(&self, target_name: &module::LowerName) -> Option<Binding> {
+    pub fn get_binding(&self, target_name: &ast::LowerName) -> Option<Binding> {
         log::trace!(
             "ModuleScope:get_binding: {:?} from {:?}",
             &target_name,
@@ -137,14 +137,14 @@ impl Scope {
             .iter()
             .flat_map(|entry| match &**entry {
                 Stmt::Binding { name, expr } => Some((
-                    module::LowerName {
+                    ast::LowerName {
                         modules: Vec::new(),
                         access: vec![name.to_string()],
                     },
                     Binding::UserBinding(expr.clone()),
                 )),
                 Stmt::Function { name, .. } => Some((
-                    module::LowerName {
+                    ast::LowerName {
                         modules: Vec::new(),
                         access: vec![name.to_string()],
                     },
@@ -202,7 +202,7 @@ impl Scope {
     }
 }
 
-pub fn get_binding(environment: &Environment, target_name: &module::LowerName) -> Option<Binding> {
+pub fn get_binding(environment: &Environment, target_name: &ast::LowerName) -> Option<Binding> {
     let full_name = target_name.to_string();
     log::trace!("get_binding: {:?}", full_name);
     match full_name.as_str() {
