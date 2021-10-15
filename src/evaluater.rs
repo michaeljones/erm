@@ -5,9 +5,9 @@ use std::rc::Rc;
 
 use self::values::Value;
 use super::ast::{self, Expr, Module, Pattern, Stmt};
-use super::bindings;
 use super::bindings::Binding;
-use super::env;
+use super::builtins;
+use super::env::{self, FoundBinding};
 use super::project;
 
 #[derive(Debug, PartialEq)]
@@ -15,7 +15,7 @@ pub enum Error {
     UnsupportedOperation,
     UnknownFunction(String, u32),
     UnknownBinding(String),
-    FunctionError(bindings::Error),
+    FunctionError(builtins::Error),
     WrongArity,
     ScopeError(env::Error),
 }
@@ -33,7 +33,9 @@ pub fn evaluate(
     if args.is_empty() {
         let main_name = ast::LowerName::simple("main".to_string());
         match env::get_binding(&environment, &main_name) {
-            Some(Binding::UserBinding(expr)) => evaluate_expression(&expr, &environment),
+            Some(FoundBinding::WithEnv(Binding::UserBinding(expr), _env)) => {
+                evaluate_expression(&expr, &environment)
+            }
             _ => Err(Error::UnknownBinding("main".to_string())),
         }
     } else {
@@ -80,8 +82,10 @@ fn evaluate_expression(expr: &Expr, environment: &env::Environment) -> Result<Va
         Expr::VarName(name) => env::get_binding(&environment, name)
             .ok_or(Error::UnknownBinding(name.to_string()))
             .and_then(|binding| match binding {
-                Binding::UserBinding(expr) => evaluate_expression(&expr, &environment),
-                Binding::Value(value) => Ok(value),
+                FoundBinding::WithEnv(Binding::UserBinding(expr), env) => {
+                    evaluate_expression(&expr, &env)
+                }
+                FoundBinding::WithEnv(Binding::Value(value), _env) => Ok(value),
                 _ => Err(Error::UnknownBinding(name.to_string())),
             }),
     }
@@ -93,7 +97,15 @@ fn evaluate_function_call<'a, 'b, 'src: 'd, 'd>(
     environment: &env::Environment,
 ) -> Result<Value, Error> {
     match env::get_binding(&environment, name) {
-        Some(Binding::UserFunc(stmt_rc)) => match &*stmt_rc {
+        Some(FoundBinding::BuiltInFunc(func)) => {
+            let arg_values = arg_exprs
+                .iter()
+                .map(|expr| evaluate_expression(&expr, &environment))
+                .collect::<Result<Vec<Value>, Error>>()?;
+
+            func.call(arg_values).map_err(Error::FunctionError)
+        }
+        Some(FoundBinding::WithEnv(Binding::UserFunc(stmt_rc), _env)) => match &*stmt_rc {
             Stmt::Function { args, expr, .. } => {
                 if arg_exprs.len() != args.len() {
                     Err(Error::WrongArity)
@@ -122,15 +134,7 @@ fn evaluate_function_call<'a, 'b, 'src: 'd, 'd>(
             }
             _ => Err(Error::UnknownFunction(name.to_string(), line!())),
         },
-        Some(Binding::BuiltInFunc(func)) => {
-            let arg_values = arg_exprs
-                .iter()
-                .map(|expr| evaluate_expression(&expr, &environment))
-                .collect::<Result<Vec<Value>, Error>>()?;
-
-            func.call(arg_values).map_err(Error::FunctionError)
-        }
-        Some(Binding::UserBinding(expr)) => {
+        Some(FoundBinding::WithEnv(Binding::UserBinding(expr), _env)) => {
             println!("expr {:#?}", expr);
             match &*expr {
                 Expr::VarName(lower_name) => {

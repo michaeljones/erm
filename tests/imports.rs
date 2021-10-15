@@ -52,4 +52,26 @@ mod imports {
             pretty_print(&result)
         );
     }
+
+    #[test]
+    fn imports_module_from_imported_module() {
+        let src = r#"
+        module Main exposing (..)
+        import Impl.Test
+        main =
+          Impl.Test.hello_from_import
+        "#;
+
+        let settings = project::Settings {
+            source_directories: vec![PathBuf::from("tests/modules")],
+        };
+
+        let result = eval(src, Some(settings));
+        assert_eq!(
+            result,
+            Ok(string("Hello from Impl.Test.Other")),
+            "{}",
+            pretty_print(&result)
+        );
+    }
 }

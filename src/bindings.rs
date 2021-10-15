@@ -4,15 +4,8 @@ use super::ast::{Expr, Stmt};
 use super::checker::term;
 use super::evaluater::values;
 
-#[derive(Debug, PartialEq)]
-pub enum Error {
-    WrongArity,
-    WrongArgumentType,
-}
-
 #[derive(Clone)]
 pub enum Binding {
-    BuiltInFunc(Rc<dyn Func>),
     // Represents a binding of a name to function statement
     UserFunc(Rc<Stmt>),
     // Represents a binding of a name to a simple expression (ie. no arguments involved.)
@@ -29,7 +22,6 @@ impl std::fmt::Debug for Binding {
     // TODO: Add more detail
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Binding::BuiltInFunc(_) => write!(f, "Binding::BuiltInFunc"),
             Binding::UserFunc(_) => write!(f, "Binding::UserFunc"),
             Binding::UserBinding(expr_rc) => {
                 write!(f, "{}", format!("Binding::UserBinding: {:?}", expr_rc))
@@ -38,9 +30,4 @@ impl std::fmt::Debug for Binding {
             Binding::Value(_) => write!(f, "Binding::Value"),
         }
     }
-}
-
-pub trait Func {
-    fn call(&self, args: Vec<values::Value>) -> Result<values::Value, Error>;
-    fn term(&self) -> term::Term;
 }

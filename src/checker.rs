@@ -6,7 +6,7 @@ use std::rc::Rc;
 use self::term::{Term, Value};
 use super::ast::{self, Expr, Module, Stmt};
 use super::bindings::Binding;
-use super::env;
+use super::env::{self, FoundBinding};
 use super::project;
 
 #[derive(Debug, PartialEq)]
@@ -37,7 +37,7 @@ pub fn check(
 
     // let mut var_generator = VarGenerator::new();
     match env::get_binding(&environment, &main_name) {
-        Some(Binding::UserBinding(expr)) => {
+        Some(FoundBinding::WithEnv(Binding::UserBinding(expr), _env)) => {
             // Generate Term version of Expr tree
             //
             // Unify Term version of Expr tree with a simple Term of:
@@ -62,7 +62,7 @@ pub fn check(
                 .map(|_| ())
                 .map_err(Error::UnifyError)
         }
-        Some(Binding::UserFunc(stmt_rc)) => match &*stmt_rc {
+        Some(FoundBinding::WithEnv(Binding::UserFunc(stmt_rc), _env)) => match &*stmt_rc {
             Stmt::Function { expr, args, .. } => {
                 let mut bindings = env::Bindings::new();
                 for arg in args {
@@ -134,14 +134,16 @@ fn expression_to_term<'a, 'b, 'src>(
         // argument to the function that we might be in the scope of
         {
             match env::get_binding(&environment, &name) {
-                Some(Binding::BuiltInFunc(func)) => {
+                Some(FoundBinding::BuiltInFunc(func)) => {
                     // TODO: Don't resolve with fake args - just resolve directly to a term definition
                     // for a function
                     // let args = Vec::new();
                     Ok(func.term())
                 }
-                Some(Binding::UserBinding(expr)) => expression_to_term(&expr, environment),
-                Some(Binding::UserArg(term)) => Ok(term.clone()),
+                Some(FoundBinding::WithEnv(Binding::UserBinding(expr), env)) => {
+                    expression_to_term(&expr, &env)
+                }
+                Some(FoundBinding::WithEnv(Binding::UserArg(term), _env)) => Ok(term.clone()),
                 result => {
                     // println!("Environment: {:#?}", environment);
                     println!("Result: {:#?}", result);
@@ -201,14 +203,6 @@ fn binary_expression_to_term<'a, 'b, 'src>(
                     &environment
                 ))
             }
-            Binding::BuiltInFunc(_func) => {
-                // let args = vec![left.clone(), right.clone()];
-                // built_in_to_term(func, &args, &environment)
-                Err(Error::Broken(
-                    "no support for binary with built-in",
-                    line!(),
-                ))
-            }
             _ => Err(Error::UnknownFunction(operator.function_name, line!())),
         }
     } else {
@@ -222,7 +216,22 @@ fn call_to_term<'a, 'b, 'src>(
     environment: &'b env::Environment,
 ) -> Result<Term, Error> {
     match env::get_binding(&environment, function_name) {
-        Some(Binding::UserFunc(stmt_rc)) => match &*stmt_rc {
+        Some(FoundBinding::BuiltInFunc(func)) => {
+            let signature_term = func.term();
+
+            let arg_terms = call_args
+                .iter()
+                .map(|arg| expression_to_term(&arg, &environment))
+                .collect::<Result<Vec<Term>, Error>>()?;
+
+            println!("About to resolve for builtin {:?}", function_name);
+            dbg!(resolve_function_and_args(
+                &signature_term,
+                &arg_terms,
+                &environment
+            ))
+        }
+        Some(FoundBinding::WithEnv(Binding::UserFunc(stmt_rc), _env)) => match &*stmt_rc {
             Stmt::Function {
                 name: _,
                 args,
@@ -286,22 +295,7 @@ fn call_to_term<'a, 'b, 'src>(
             }
             _ => Err(Error::UnknownFunction(function_name.clone(), line!())),
         },
-        Some(Binding::BuiltInFunc(func)) => {
-            let signature_term = func.term();
-
-            let arg_terms = call_args
-                .iter()
-                .map(|arg| expression_to_term(&arg, &environment))
-                .collect::<Result<Vec<Term>, Error>>()?;
-
-            println!("About to resolve for builtin {:?}", function_name);
-            dbg!(resolve_function_and_args(
-                &signature_term,
-                &arg_terms,
-                &environment
-            ))
-        }
-        Some(Binding::UserBinding(expr)) => {
+        Some(FoundBinding::WithEnv(Binding::UserBinding(expr), _env)) => {
             println!("expr {:#?}", expr);
             match &*expr {
                 Expr::VarName(lower_name) => call_to_term(lower_name, call_args, environment),

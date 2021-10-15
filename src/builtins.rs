@@ -1,6 +1,16 @@
-use super::bindings::{Error, Func};
 use super::checker::term;
 use super::evaluater::values;
+
+#[derive(Debug, PartialEq)]
+pub enum Error {
+    WrongArity,
+    WrongArgumentType,
+}
+
+pub trait Func {
+    fn call(&self, args: Vec<values::Value>) -> Result<values::Value, Error>;
+    fn term(&self) -> term::Term;
+}
 
 // stringFromInt
 pub struct StringFromInt {}

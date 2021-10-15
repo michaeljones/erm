@@ -1,3 +1,4 @@
+use im::vector;
 use std::collections::HashMap;
 use std::io::Read;
 use std::path::PathBuf;
@@ -23,16 +24,17 @@ pub type Bindings = HashMap<ast::LowerName, Binding>;
 type Operators = HashMap<String, Operator>;
 
 #[derive(Debug)]
-pub struct Scope {
-    pub bindings: Bindings,
-    pub operators: Operators,
+pub struct Environment {
+    pub module_scopes: im::Vector<Rc<ModuleScope>>,
+    pub local_scopes: im::Vector<Rc<Scope>>,
 }
 
 #[derive(Debug)]
 pub struct ModuleScope {
     pub name: Vec<String>,
-    pub internal_scopes: im::Vector<Rc<ModuleScope>>,
-    pub main_scope: Scope,
+    // TODO: Replace with env?
+    pub import_scopes: im::Vector<Rc<ModuleScope>>,
+    pub local_scope: Rc<Scope>,
     pub exposing: ast::Exposing,
 }
 
@@ -47,19 +49,19 @@ impl ModuleScope {
         // If there is no module part of the lower name then we look in the main scope for the
         // target name
         if target_name.modules.is_empty() {
-            if let Some(value) = self.main_scope.bindings.get(target_name) {
+            if let Some(value) = self.local_scope.bindings.get(target_name) {
                 return Some(value.clone());
             }
         } else {
             // If there is a module part then we find the corresponding module and then look in the
             // main scope of that module for just the 'access' part of the lower name
             if let Some(module_scope) = &self
-                .internal_scopes
+                .import_scopes
                 .iter()
                 .find(|scope| scope.name == target_name.modules)
             {
                 if let Some(value) = &module_scope
-                    .main_scope
+                    .local_scope
                     .bindings
                     .get(&target_name.without_module())
                 {
@@ -81,12 +83,12 @@ impl ModuleScope {
         );
 
         // TODO: Filter by exposing
-        if let Some(value) = self.main_scope.operators.get(target_name) {
+        if let Some(value) = self.local_scope.operators.get(target_name) {
             return Some(value.clone());
         }
 
         // Backwards through list to check lowest imports first
-        for scope in self.internal_scopes.iter().rev() {
+        for scope in self.import_scopes.iter().rev() {
             // TODO: Filter by exposing
             if let Some(value) = &scope.get_operator(target_name) {
                 return Some(value.clone());
@@ -97,17 +99,17 @@ impl ModuleScope {
     }
 }
 
-#[derive(Debug)]
-pub struct Environment {
-    pub module_scopes: im::Vector<Rc<ModuleScope>>,
-    pub local_scopes: im::Vector<Rc<Scope>>,
-}
-
 #[derive(Debug, PartialEq)]
 pub enum Error {
     UnableToFindModule(String),
     FailedToRead(PathBuf),
     FailedToParse(PathBuf, parser::Error),
+}
+
+#[derive(Debug)]
+pub struct Scope {
+    pub bindings: Bindings,
+    pub operators: Operators,
 }
 
 impl Scope {
@@ -116,7 +118,7 @@ impl Scope {
         settings: &project::Settings,
     ) -> Result<ModuleScope, Error> {
         log::trace!("from_module {:?}", &module.name);
-        let internal_scopes: im::Vector<Rc<ModuleScope>> = module
+        let import_scopes: im::Vector<Rc<ModuleScope>> = module
             .imports
             .iter()
             .map(|import| {
@@ -207,11 +209,11 @@ impl Scope {
 
         Ok(ModuleScope {
             name: module.name.clone(),
-            internal_scopes,
-            main_scope: Scope {
+            import_scopes,
+            local_scope: Rc::new(Scope {
                 bindings,
                 operators,
-            },
+            }),
             exposing: module.exposing.clone(),
         })
     }
@@ -225,36 +227,75 @@ impl Scope {
     }
 }
 
-pub fn get_binding(environment: &Environment, target_name: &ast::LowerName) -> Option<Binding> {
+pub enum FoundBinding {
+    BuiltInFunc(Rc<dyn builtins::Func>),
+    WithEnv(Binding, Environment),
+}
+
+impl std::fmt::Debug for FoundBinding {
+    // Implemented because we can't derive Debug for 'dyn Func'
+    // TODO: Add more detail
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            FoundBinding::BuiltInFunc(_) => write!(f, "FoundBinding::BuiltInFunc"),
+            FoundBinding::WithEnv(_, _) => write!(f, "FoundBinding::WithEnv"),
+        }
+    }
+}
+
+/* Returns the binding for the target name and the environment in which that binding should be
+  evaluated.
+*/
+pub fn get_binding(
+    environment: &Environment,
+    target_name: &ast::LowerName,
+) -> Option<FoundBinding> {
     let full_name = target_name.to_string();
     log::trace!("get_binding: {:?}", full_name);
     match full_name.as_str() {
         "Elm.Kernel.String.fromInt" => {
-            return Some(Binding::BuiltInFunc(Rc::new(builtins::StringFromInt {})))
+            return Some(FoundBinding::BuiltInFunc(Rc::new(
+                builtins::StringFromInt {},
+            )))
         }
         "Elm.Kernel.String.join" => {
-            return Some(Binding::BuiltInFunc(Rc::new(builtins::StringJoin {})))
+            return Some(FoundBinding::BuiltInFunc(Rc::new(builtins::StringJoin {})))
         }
-        "Elm.Kernel.Basics.add" => return Some(Binding::BuiltInFunc(Rc::new(builtins::Add {}))),
-        "Elm.Kernel.Basics.sub" => return Some(Binding::BuiltInFunc(Rc::new(builtins::Sub {}))),
-        "Elm.Kernel.Basics.mul" => return Some(Binding::BuiltInFunc(Rc::new(builtins::Mul {}))),
-        "Elm.Kernel.Basics.gt" => return Some(Binding::BuiltInFunc(Rc::new(builtins::Gt {}))),
-        "Elm.Kernel.Basics.lt" => return Some(Binding::BuiltInFunc(Rc::new(builtins::Lt {}))),
+        "Elm.Kernel.Basics.add" => {
+            return Some(FoundBinding::BuiltInFunc(Rc::new(builtins::Add {})))
+        }
+        "Elm.Kernel.Basics.sub" => {
+            return Some(FoundBinding::BuiltInFunc(Rc::new(builtins::Sub {})))
+        }
+        "Elm.Kernel.Basics.mul" => {
+            return Some(FoundBinding::BuiltInFunc(Rc::new(builtins::Mul {})))
+        }
+        "Elm.Kernel.Basics.gt" => return Some(FoundBinding::BuiltInFunc(Rc::new(builtins::Gt {}))),
+        "Elm.Kernel.Basics.lt" => return Some(FoundBinding::BuiltInFunc(Rc::new(builtins::Lt {}))),
         "Elm.Kernel.Basics.append" => {
-            return Some(Binding::BuiltInFunc(Rc::new(builtins::Append {})))
+            return Some(FoundBinding::BuiltInFunc(Rc::new(builtins::Append {})))
         }
         _ => {}
     }
 
-    for scope in &environment.local_scopes {
+    // TODO: Only check local scope if there is not module section to the LowerName
+    for (i, scope) in environment.local_scopes.iter().enumerate() {
         if let Some(value) = scope.bindings.get(target_name) {
-            return Some(value.clone());
+            let env = Environment {
+                module_scopes: environment.module_scopes.clone(),
+                local_scopes: environment.local_scopes.iter().skip(i).cloned().collect(),
+            };
+            return Some(FoundBinding::WithEnv(value.clone(), env));
         }
     }
 
-    for scope in &environment.module_scopes {
-        if let Some(value) = scope.get_binding(target_name) {
-            return Some(value.clone());
+    for module_scope in &environment.module_scopes {
+        if let Some(value) = module_scope.get_binding(target_name) {
+            let env = Environment {
+                module_scopes: module_scope.import_scopes.clone(),
+                local_scopes: vector![module_scope.local_scope.clone()],
+            };
+            return Some(FoundBinding::WithEnv(value.clone(), env));
         }
     }
 

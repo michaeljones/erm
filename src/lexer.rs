@@ -91,10 +91,10 @@ pub enum Token<'src> {
     RightArrow,
 
     // Names
-    #[regex("([A-Z][a-zA-Z0-9]*\\.)*([A-Z][a-zA-Z0-9])")]
+    #[regex("([A-Z][a-zA-Z0-9_]*\\.)*([A-Z][a-zA-Z0-9_])")]
     UpperName(&'src str),
 
-    #[regex("([A-Z][a-zA-Z0-9]*\\.)*[a-z_][a-zA-Z0-9]*")]
+    #[regex("([A-Z][a-zA-Z0-9_]*\\.)*[a-z_][a-zA-Z0-9_]*")]
     LowerName(&'src str),
 
     #[regex(r#"[+><!*-:|]+"#)]
