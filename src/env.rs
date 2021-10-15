@@ -103,7 +103,7 @@ pub struct Environment {
 
 #[derive(Debug, PartialEq)]
 pub enum Error {
-    FileNotFound(String),
+    UnableToFindModule(String),
     FailedToRead(String),
     FailedToParse(String, parser::Error),
 }
@@ -118,7 +118,7 @@ impl Scope {
                 // Read & parse import.name
                 let filename = format!("core/{}.elm", &import.module_name.join("/"));
                 let mut file = std::fs::File::open(&filename)
-                    .map_err(|_| Error::FileNotFound(filename.clone()))?;
+                    .map_err(|_| Error::UnableToFindModule(import.module_name.join(".")))?;
 
                 let mut source = String::new();
                 file.read_to_string(&mut source)

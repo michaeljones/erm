@@ -362,3 +362,20 @@ fn use_built_in_string_module() {
         pretty_print(&result)
     );
 }
+
+#[test]
+fn unable_to_find_import() {
+    let src = r#"
+        module Main exposing (..)
+        import Does.Not.Exist
+        main =
+          String.append "Hello, " "World"
+        "#;
+    let result = eval(src);
+    assert_eq!(
+        result,
+        Err(Error::ScopeError(env::Error::UnableToFindModule(
+            "Does.Not.Exist".to_string()
+        )))
+    );
+}
