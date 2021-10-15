@@ -19,6 +19,7 @@ use erm::env;
 use erm::evaluater;
 use erm::lexer::Token;
 use erm::parser;
+use erm::project;
 
 #[derive(Debug)]
 enum Error {
@@ -47,14 +48,15 @@ fn dump_file(filename: &str, _quiet: bool) -> Result<(), Error> {
     let args = vec!["example_arg".to_string()];
 
     let basics = erm::parse_basics().map_err(|_| Error::ParserError)?;
-    let scope = env::Scope::from_module(&basics).map_err(Error::ScopeError)?;
+    let settings = project::Settings::new();
+    let scope = env::Scope::from_module(&basics, &settings).map_err(Error::ScopeError)?;
 
     let scopes = vector![Rc::new(scope)];
     let environment = env::Environment {
         module_scopes: scopes,
         local_scopes: vector![],
     };
-    evaluater::evaluate(&module, args, &environment).map_err(|err| {
+    evaluater::evaluate(&module, args, &environment, &settings).map_err(|err| {
         println!("{:?}", &err);
         Error::EvaluateError
     })?;

@@ -12,6 +12,7 @@ pub mod env;
 pub mod evaluater;
 pub mod lexer;
 pub mod parser;
+pub mod project;
 
 use self::lexer::Token;
 
@@ -24,12 +25,6 @@ pub fn parse_source(source: String) -> parser::ParseResult {
     let tokens = Token::lexer(&source);
     let mut iter = tokens.spanned().peekable();
     parser::parse(&mut iter)
-}
-
-pub fn prelude() -> Result<env::ModuleScope, Error> {
-    let basics = parse_basics().map_err(|err| Error::ParserError(err, basics_source()))?;
-    // let string = parse_string().map_err(|err| Error::ParserError(err, string_source()))?;
-    env::Scope::from_module(&basics).map_err(|err| Error::ScopeError(err, basics_source()))
 }
 
 pub fn parse_basics() -> parser::ParseResult {

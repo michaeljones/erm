@@ -10,6 +10,7 @@ use codespan_reporting::diagnostic::{Diagnostic, Label};
 use codespan_reporting::files::SimpleFiles;
 use codespan_reporting::term;
 use codespan_reporting::term::termcolor::Buffer;
+use std::path::PathBuf;
 use std::rc::Rc;
 use unindent::unindent;
 
@@ -20,6 +21,7 @@ use erm::evaluater;
 use erm::evaluater::values::Value;
 use erm::lexer::Range;
 use erm::parser;
+use erm::project;
 
 #[derive(Debug, PartialEq)]
 enum Error {
@@ -61,14 +63,20 @@ fn pretty_print(result: &Result<Value, Error>) -> String {
     }
 }
 
-fn eval(string: &str) -> Result<Value, Error> {
-    eval_with_args(string, Vec::new())
+fn eval(string: &str, settings: Option<project::Settings>) -> Result<Value, Error> {
+    eval_with_args(string, Vec::new(), settings)
 }
 
-fn eval_with_args(string: &str, args: Vec<String>) -> Result<Value, Error> {
+fn eval_with_args(
+    string: &str,
+    args: Vec<String>,
+    settings: Option<project::Settings>,
+) -> Result<Value, Error> {
     let _ = env_logger::builder().is_test(true).try_init();
 
     log::trace!("eval_with_args");
+
+    let settings = settings.unwrap_or_else(project::Settings::new);
 
     let src = unindent(&string);
     let module =
@@ -76,14 +84,14 @@ fn eval_with_args(string: &str, args: Vec<String>) -> Result<Value, Error> {
 
     let module = ast::with_default_imports(&module);
 
-    let scope = env::Scope::from_module(&module).map_err(Error::ScopeError)?;
+    let scope = env::Scope::from_module(&module, &settings).map_err(Error::ScopeError)?;
     let scopes = vector![Rc::new(scope)];
     let environment = env::Environment {
         module_scopes: scopes,
         local_scopes: vector![],
     };
-    checker::check(&module, &environment).map_err(Error::CheckError)?;
-    evaluater::evaluate(&module, args, &environment).map_err(Error::EvaluateError)
+    checker::check(&module, &environment, &settings).map_err(Error::CheckError)?;
+    evaluater::evaluate(&module, args, &environment, &settings).map_err(Error::EvaluateError)
 }
 
 fn string(str: &str) -> Value {
@@ -97,7 +105,7 @@ fn basic_string() {
         main =
           "hello, world"
         "#;
-    let result = eval(src);
+    let result = eval(src, None);
     assert_eq!(result, Ok(string("hello, world")));
 }
 
@@ -108,7 +116,7 @@ fn string_from_int() {
         main =
           String.fromInt 5
         ";
-    let result = eval(src);
+    let result = eval(src, None);
     assert_eq!(result, Ok(string("5")));
 }
 
@@ -119,7 +127,7 @@ fn add_ints() {
         main =
           String.fromInt (1 + 3)
         ";
-    let result = eval(src);
+    let result = eval(src, None);
     assert_eq!(result, Ok(string("4")));
 }
 
@@ -130,7 +138,7 @@ fn add_int_and_string_fails() {
         main =
           String.fromInt (1 + "string")
         "#;
-    let result = eval(src);
+    let result = eval(src, None);
     assert_eq!(
         result,
         Err(Error::CheckError(checker::Error::UnifyError(
@@ -149,7 +157,7 @@ fn arithmetic_precedence() {
         main =
           String.fromInt (10 - 11 * 12 + 13)
         ";
-    assert_eq!(eval(module), Ok(Value::String("-109".to_string())));
+    assert_eq!(eval(module, None), Ok(Value::String("-109".to_string())));
 }
 
 #[test]
@@ -159,7 +167,7 @@ fn arithmetic_parenthesis() {
         main =
           String.fromInt ((10 - 11) * (12 + 13))
         ";
-    let result = eval(src);
+    let result = eval(src, None);
     assert_eq!(result, Ok(string("-25")), "{}", pretty_print(&result));
 }
 
@@ -175,7 +183,7 @@ fn int_comparison_gt() {
         main =
           stringFromBool (8 + 12 > 7 + 5)
         "#;
-    let result = eval(src);
+    let result = eval(src, None);
     assert_eq!(result, Ok(string("True")), "{}", pretty_print(&result));
 }
 
@@ -187,7 +195,7 @@ fn int_comparison_lt() {
         main =
           stringFromBool (8 + 12 < 7 + 5)
         "#;
-    let result = eval(src);
+    let result = eval(src, None);
     assert_eq!(result, Ok(string("False")), "{}", pretty_print(&result));
 }
 
@@ -198,7 +206,7 @@ fn string_concatenation() {
         main =
           "a" ++ "bc" ++ "def"
         "#;
-    assert_eq!(eval(module), Ok(string("abcdef")));
+    assert_eq!(eval(module, None), Ok(string("abcdef")));
 }
 
 #[test]
@@ -208,7 +216,7 @@ fn if_statement_single_line() {
         main =
           if True then "5" else "4"
         "#;
-    let result = eval(src);
+    let result = eval(src, None);
     assert_eq!(result, Ok(string("5")), "{}", pretty_print(&result));
 }
 
@@ -222,7 +230,7 @@ fn if_statement_multi_line() {
           else
             "4"
         "#;
-    let result = eval(src);
+    let result = eval(src, None);
     assert_eq!(result, Ok(string("4")), "{}", pretty_print(&result));
 }
 
@@ -236,7 +244,7 @@ fn if_statement_multi_line_bad() {
           else
             4
         "#;
-    let result = eval(src);
+    let result = eval(src, None);
     assert_eq!(
         result,
         Err(Error::ParserError(
@@ -259,7 +267,7 @@ fn nested_if_statement() {
           else
             "23"
         "#;
-    let result = eval(src);
+    let result = eval(src, None);
     assert_eq!(result, Ok(string("12")), "{}", pretty_print(&result));
 }
 
@@ -270,7 +278,7 @@ fn main_args() {
         main args =
           String.join args
         "#;
-    let result = eval_with_args(src, vec!["Hello".to_string(), " world".to_string()]);
+    let result = eval_with_args(src, vec!["Hello".to_string(), " world".to_string()], None);
     assert_eq!(
         result,
         Ok(string("Hello world")),
@@ -287,7 +295,7 @@ fn function_call_simple() {
         main =
           String.fromInt (add1 5)
         "#;
-    let result = eval(src);
+    let result = eval(src, None);
     assert_eq!(result, Ok(string("6")), "{}", pretty_print(&result));
 }
 
@@ -299,7 +307,7 @@ fn function_call_with_paren_args() {
         main =
           String.fromInt (addTogether (addTogether 2 5) 8)
         "#;
-    let result = eval(src);
+    let result = eval(src, None);
     assert_eq!(result, Ok(string("15")), "{}", pretty_print(&result));
 }
 
@@ -313,7 +321,7 @@ fn function_clashes_with_operator_func() {
         main =
           String.fromInt (add 2 5)
         "#;
-    let result = eval(src);
+    let result = eval(src, None);
     assert_eq!(result, Ok(string("7")), "{}", pretty_print(&result));
 }
 
@@ -327,7 +335,7 @@ fn function_calls_function() {
         main =
           String.fromInt (add1 2)
         "#;
-    let result = eval(src);
+    let result = eval(src, None);
     assert_eq!(result, Ok(string("3")), "{}", pretty_print(&result));
 }
 
@@ -341,7 +349,7 @@ fn function_calls_same_args() {
         main =
           String.fromInt (add1 2)
         "#;
-    let result = eval(src);
+    let result = eval(src, None);
     assert_eq!(result, Ok(string("3")), "{}", pretty_print(&result));
 }
 
@@ -354,7 +362,7 @@ fn use_built_in_string_module() {
         main =
           String.append "Hello, " "World"
         "#;
-    let result = eval(src);
+    let result = eval(src, None);
     assert_eq!(
         result,
         Ok(string("Hello, World")),
@@ -371,11 +379,33 @@ fn unable_to_find_import() {
         main =
           String.append "Hello, " "World"
         "#;
-    let result = eval(src);
+    let result = eval(src, None);
     assert_eq!(
         result,
         Err(Error::ScopeError(env::Error::UnableToFindModule(
             "Does.Not.Exist".to_string()
         )))
+    );
+}
+
+#[test]
+fn imports_module_from_configured_folder() {
+    let src = r#"
+        module Main exposing (..)
+        import Impl.Test
+        main =
+          Impl.Test.hello
+        "#;
+
+    let settings = project::Settings {
+        source_directories: vec![PathBuf::from("tests/modules")],
+    };
+
+    let result = eval(src, Some(settings));
+    assert_eq!(
+        result,
+        Ok(string("Hello from Impl.Test")),
+        "{}",
+        pretty_print(&result)
     );
 }

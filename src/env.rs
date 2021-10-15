@@ -1,11 +1,13 @@
 use std::collections::HashMap;
 use std::io::Read;
+use std::path::PathBuf;
 use std::rc::Rc;
 
 use super::ast::{self, Associativity, Module, Stmt};
 use super::bindings::Binding;
 use super::builtins;
 use super::parser;
+use super::project;
 use crate::parse_source;
 
 #[derive(Debug, Clone)]
@@ -104,21 +106,42 @@ pub struct Environment {
 #[derive(Debug, PartialEq)]
 pub enum Error {
     UnableToFindModule(String),
-    FailedToRead(String),
-    FailedToParse(String, parser::Error),
+    FailedToRead(PathBuf),
+    FailedToParse(PathBuf, parser::Error),
 }
 
 impl Scope {
-    pub fn from_module(module: &Module) -> Result<ModuleScope, Error> {
+    pub fn from_module(
+        module: &Module,
+        settings: &project::Settings,
+    ) -> Result<ModuleScope, Error> {
         log::trace!("from_module {:?}", &module.name);
         let internal_scopes: im::Vector<Rc<ModuleScope>> = module
             .imports
             .iter()
             .map(|import| {
                 // Read & parse import.name
-                let filename = format!("core/{}.elm", &import.module_name.join("/"));
-                let mut file = std::fs::File::open(&filename)
-                    .map_err(|_| Error::UnableToFindModule(import.module_name.join(".")))?;
+                let mut filenames: Vec<PathBuf> = settings
+                    .source_directories
+                    .iter()
+                    .map(|dir| {
+                        let mut path = dir.clone();
+                        path.push(format!("{}.elm", &import.module_name.join("/")));
+                        path
+                    })
+                    .collect();
+
+                let mut core_module_path = PathBuf::new();
+                core_module_path.push("core");
+                core_module_path.push(format!("{}.elm", &import.module_name.join("/")));
+                filenames.push(core_module_path);
+
+                println!("{:?}", filenames);
+
+                let (filename, mut file) = filenames
+                    .into_iter()
+                    .find_map(|path| std::fs::File::open(&path).ok().map(|f| (path, f)))
+                    .ok_or(Error::UnableToFindModule(import.module_name.join(".")))?;
 
                 let mut source = String::new();
                 file.read_to_string(&mut source)
@@ -128,7 +151,7 @@ impl Scope {
                     .map_err(|err| Error::FailedToParse(filename.clone(), err))?;
 
                 // Create a scope from it maybe?
-                Self::from_module(&module).map(Rc::new)
+                Self::from_module(&module, settings).map(Rc::new)
             })
             .collect::<Result<_, _>>()?;
 

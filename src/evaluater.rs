@@ -8,6 +8,7 @@ use super::ast::{self, Expr, Module, Pattern, Stmt};
 use super::bindings;
 use super::bindings::Binding;
 use super::env;
+use super::project;
 
 #[derive(Debug, PartialEq)]
 pub enum Error {
@@ -23,10 +24,11 @@ pub fn evaluate(
     module: &Module,
     args: Vec<String>,
     environment: &env::Environment,
+    settings: &project::Settings,
 ) -> Result<Value, Error> {
     log::trace!("evaluate");
 
-    let scope = env::Scope::from_module(&module).map_err(Error::ScopeError)?;
+    let scope = env::Scope::from_module(&module, settings).map_err(Error::ScopeError)?;
     let environment = env::add_module_scope(&environment, scope);
     if args.is_empty() {
         let main_name = ast::LowerName::simple("main".to_string());

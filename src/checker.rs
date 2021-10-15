@@ -7,6 +7,7 @@ use self::term::{Term, Value};
 use super::ast::{self, Expr, Module, Stmt};
 use super::bindings::Binding;
 use super::env;
+use super::project;
 
 #[derive(Debug, PartialEq)]
 pub enum Error {
@@ -15,17 +16,21 @@ pub enum Error {
     UnifyError(unify::Error),
     UnknownFunction(ast::LowerName, u32),
     UnknownOperator(String),
-    UnknownVarName(String),
+    UnknownVarName(String, u32),
     ArgumentMismatch(u32),
     TooManyArguments,
     Broken(&'static str, u32),
     ScopeError(env::Error),
 }
 
-pub fn check(module: &Module, environment: &env::Environment) -> Result<(), Error> {
+pub fn check(
+    module: &Module,
+    environment: &env::Environment,
+    settings: &project::Settings,
+) -> Result<(), Error> {
     log::trace!("check");
 
-    let scope = env::Scope::from_module(&module).map_err(Error::ScopeError)?;
+    let scope = env::Scope::from_module(&module, settings).map_err(Error::ScopeError)?;
     let environment = env::add_module_scope(&environment, scope);
 
     let main_name = ast::LowerName::simple("main".to_string());
@@ -128,17 +133,19 @@ fn expression_to_term<'a, 'b, 'src>(
         // Want to be able to fetch 'x' from the scope where 'x' is an typed or untyped
         // argument to the function that we might be in the scope of
         {
-            match env::get_binding(&environment, &ast::LowerName::simple(name.to_string())) {
+            match env::get_binding(&environment, &name) {
                 Some(Binding::BuiltInFunc(func)) => {
                     // TODO: Don't resolve with fake args - just resolve directly to a term definition
                     // for a function
                     // let args = Vec::new();
                     Ok(func.term())
                 }
+                Some(Binding::UserBinding(expr)) => expression_to_term(&expr, environment),
                 Some(Binding::UserArg(term)) => Ok(term.clone()),
-                _ => {
-                    println!("Environment: {:#?}", environment);
-                    Err(Error::UnknownVarName(name.to_string()))
+                result => {
+                    // println!("Environment: {:#?}", environment);
+                    println!("Result: {:#?}", result);
+                    Err(Error::UnknownVarName(name.to_string(), line!()))
                 }
             }
         }

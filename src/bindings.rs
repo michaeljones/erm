@@ -13,7 +13,9 @@ pub enum Error {
 #[derive(Clone)]
 pub enum Binding {
     BuiltInFunc(Rc<dyn Func>),
+    // Represents a binding of a name to function statement
     UserFunc(Rc<Stmt>),
+    // Represents a binding of a name to a simple expression (ie. no arguments involved.)
     UserBinding(Rc<Expr>),
     // TODO: Feels wrong to have a 'term ' in here with other things
     UserArg(term::Term),
