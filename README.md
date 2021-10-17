@@ -49,6 +49,7 @@ RUST_LOG=trace cargo test -- --nocapture
 ### Elm Resources
 - [Full syntax](https://github.com/pdamoc/elm-syntax-sscce/blob/main/src/Main.elm)
 - [Prelude](https://github.com/elm/compiler/blob/770071accf791e8171440709effe71e78a9ab37c/compiler/src/Elm/Compiler/Imports.hs#L20-L33)
+- [When to include prelude](https://github.com/elm/compiler/blob/770071accf791e8171440709effe71e78a9ab37c/compiler/src/Parse/Module.hs#L80)
 
 ### Type Inference
 

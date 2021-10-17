@@ -36,11 +36,7 @@ pub fn parse<'src>(mut iter: &mut TokenIter<'src>) -> ParseResult {
     matches_space(&iter.next())?;
     let name = extract_upper_name(&iter.next())?;
     matches_space(&iter.next())?;
-    matches(&iter.next(), Token::Exposing)?;
-    matches_space(&iter.next())?;
-    matches(&iter.next(), Token::OpenParen)?;
     let exposing = parse_exposing(&mut iter)?;
-    matches(&iter.next(), Token::CloseParen)?;
 
     consume_til_line_start(&mut iter);
 
@@ -64,14 +60,22 @@ pub fn parse<'src>(mut iter: &mut TokenIter<'src>) -> ParseResult {
 }
 
 fn parse_exposing<'a>(mut iter: &mut TokenIter<'a>) -> Result<Exposing, Error> {
-    match iter.peek() {
+    matches(&iter.next(), Token::Exposing)?;
+    matches_space(&iter.next())?;
+    matches(&iter.next(), Token::OpenParen)?;
+
+    let exposing = match iter.peek() {
         Some((Token::Ellipsis, _range)) => {
             iter.next();
             Ok(Exposing::All)
         }
         Some(_) => parse_exposing_details(&mut iter).map(Exposing::List),
         token => Err(Error::UnknownExposing(format!("{:?}", token))),
-    }
+    }?;
+
+    matches(&iter.next(), Token::CloseParen)?;
+
+    Ok(exposing)
 }
 
 fn parse_exposing_details<'a>(iter: &mut TokenIter<'a>) -> Result<Vec<ExposingDetail>, Error> {
@@ -134,9 +138,16 @@ fn parse_imports<'a>(mut iter: &mut TokenIter<'a>) -> Result<Vec<Import>, Error>
         matches_space(&iter.next())?;
         let module_name = extract_upper_name(&iter.next())?;
 
+        let mut exposing = None;
+
+        consume_spaces(&mut iter);
+        if matches!(iter.peek(), Some((Token::Exposing, _range))) {
+            exposing = Some(parse_exposing(&mut iter)?);
+        }
+
         imports.push(Import {
             module_name,
-            exposing: None,
+            exposing,
         });
 
         consume_til_line_start(&mut iter);

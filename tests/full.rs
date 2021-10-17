@@ -267,22 +267,4 @@ mod full {
         let result = eval(src, None);
         assert_eq!(result, Ok(string("3")), "{}", pretty_print(&result));
     }
-
-    #[test]
-    fn use_built_in_string_module() {
-        // To check that something like the String module can exist in the prelude and be accessed in
-        // general functions without importing it
-        let src = r#"
-        module Main exposing (..)
-        main =
-          String.append "Hello, " "World"
-        "#;
-        let result = eval(src, None);
-        assert_eq!(
-            result,
-            Ok(string("Hello, World")),
-            "{}",
-            pretty_print(&result)
-        );
-    }
 }

@@ -30,6 +30,8 @@ pub struct Import {
 }
 
 impl Import {
+    // How Elm determines whether to include the prelude:
+    // https://github.com/elm/compiler/blob/770071accf791e8171440709effe71e78a9ab37c/compiler/src/Parse/Module.hs#L80
     pub fn prelude() -> Vec<Import> {
         log::trace!("prelude");
         vec![

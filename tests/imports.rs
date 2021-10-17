@@ -31,6 +31,25 @@ mod imports {
         );
     }
 
+    /*
+    #[test]
+    fn imported_symbol_does_not_exist() {
+        let src = r#"
+        module Main exposing (..)
+        import Impl.Test exposing (does_not_exist)
+        main =
+          String.append "Hello, " "World"
+        "#;
+        let result = eval(src, None);
+        assert_eq!(
+            result,
+            Err(Error::ScopeError(env::Error::UnableToFindModule(
+                "Does.Not.Exist".to_string()
+            )))
+        );
+    }
+    */
+
     #[test]
     fn imports_module_from_configured_folder() {
         let src = r#"
@@ -70,6 +89,27 @@ mod imports {
         assert_eq!(
             result,
             Ok(string("Hello from Impl.Test.Other")),
+            "{}",
+            pretty_print(&result)
+        );
+    }
+
+    #[test]
+    fn import_specific_symbol() {
+        let src = r#"
+        module Main exposing (..)
+        import Impl.Test exposing (hello)
+        main =
+          hello
+        "#;
+        let settings = project::Settings {
+            source_directories: vec![PathBuf::from("tests/modules")],
+        };
+
+        let result = eval(src, Some(settings));
+        assert_eq!(
+            result,
+            Ok(string("Hello from Impl.Test")),
             "{}",
             pretty_print(&result)
         );

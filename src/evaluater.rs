@@ -21,15 +21,13 @@ pub enum Error {
 }
 
 pub fn evaluate(
-    module: &Module,
+    _module: &Module,
     args: Vec<String>,
     environment: &env::Environment,
-    settings: &project::Settings,
+    _settings: &project::Settings,
 ) -> Result<Value, Error> {
     log::trace!("evaluate");
 
-    let scope = env::Scope::from_module(&module, settings).map_err(Error::ScopeError)?;
-    let environment = env::add_module_scope(&environment, scope);
     if args.is_empty() {
         let main_name = ast::LowerName::simple("main".to_string());
         match env::get_binding(&environment, &main_name) {
@@ -127,7 +125,7 @@ fn evaluate_function_call<'a, 'b, 'src: 'd, 'd>(
 
                     let arg_scope = env::Scope::from_bindings(pairs);
 
-                    let environment = env::new_local_scope(environment, arg_scope);
+                    let environment = env::add_local_scope(environment, arg_scope);
                     println!("Environment: {:#?}", environment);
                     evaluate_expression(&expr, &environment)
                 }

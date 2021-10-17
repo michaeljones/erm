@@ -24,14 +24,11 @@ pub enum Error {
 }
 
 pub fn check(
-    module: &Module,
+    _module: &Module,
     environment: &env::Environment,
-    settings: &project::Settings,
+    _settings: &project::Settings,
 ) -> Result<(), Error> {
     log::trace!("check");
-
-    let scope = env::Scope::from_module(&module, settings).map_err(Error::ScopeError)?;
-    let environment = env::add_module_scope(&environment, scope);
 
     let main_name = ast::LowerName::simple("main".to_string());
 
@@ -304,6 +301,7 @@ fn call_to_term<'a, 'b, 'src>(
         }
         value => {
             println!("value {:#?}", value);
+            println!("value {:#?}", environment.module_imports);
             Err(Error::UnknownFunction(function_name.clone(), line!()))
         }
     }

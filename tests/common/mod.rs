@@ -1,14 +1,11 @@
-use std::rc::Rc;
-
 use codespan_reporting::diagnostic::{Diagnostic, Label};
 use codespan_reporting::files::SimpleFiles;
 use codespan_reporting::term;
 use codespan_reporting::term::termcolor::Buffer;
-use im::vector;
 use unindent::unindent;
 
 use erm::ast;
-use erm::checker::{self};
+use erm::checker;
 use erm::env;
 use erm::evaluater;
 use erm::evaluater::values::Value;
@@ -81,12 +78,9 @@ pub fn eval_with_args(
 
     let module = ast::with_default_imports(&module);
 
-    let scope = env::Scope::from_module(&module, &settings).map_err(Error::ScopeError)?;
-    let scopes = vector![Rc::new(scope)];
-    let environment = env::Environment {
-        module_scopes: scopes,
-        local_scopes: vector![],
-    };
+    let scope = env::ModuleScope::from_module(&module, &settings).map_err(Error::ScopeError)?;
+    let environment = env::Environment::from_module_scope(scope);
+
     checker::check(&module, &environment, &settings).map_err(Error::CheckError)?;
     evaluater::evaluate(&module, args, &environment, &settings).map_err(Error::EvaluateError)
 }

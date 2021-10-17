@@ -1,19 +1,15 @@
-#[macro_use]
-extern crate im;
 extern crate clap;
 extern crate erm;
+extern crate im;
 extern crate logos;
 extern crate regex;
 extern crate walkdir;
 
 use clap::{App, Arg};
 use logos::Logos;
-// use walkdir::WalkDir;
 
-// use std::ffi::OsStr;
 use std::fs::File;
 use std::io::prelude::*;
-use std::rc::Rc;
 
 use erm::env;
 use erm::evaluater;
@@ -49,13 +45,9 @@ fn dump_file(filename: &str, _quiet: bool) -> Result<(), Error> {
 
     let basics = erm::parse_basics().map_err(|_| Error::ParserError)?;
     let settings = project::Settings::new();
-    let scope = env::Scope::from_module(&basics, &settings).map_err(Error::ScopeError)?;
+    let scope = env::ModuleScope::from_module(&basics, &settings).map_err(Error::ScopeError)?;
+    let environment = env::Environment::from_module_scope(scope);
 
-    let scopes = vector![Rc::new(scope)];
-    let environment = env::Environment {
-        module_scopes: scopes,
-        local_scopes: vector![],
-    };
     evaluater::evaluate(&module, args, &environment, &settings).map_err(|err| {
         println!("{:?}", &err);
         Error::EvaluateError

@@ -7,3 +7,6 @@ hello =
 
 hello_from_import =
     Impl.Test.Other.hello
+
+hello_from_prelude =
+    String.append "Hello, " "from prelude"
