@@ -7,6 +7,7 @@ pub type Substitutions<'src> = HashMap<String, &'src Term>;
 #[derive(Debug, PartialEq)]
 pub enum Error {
     FailedToUnify(String, String),
+    UnhandledCase(u32),
 }
 
 pub fn unify<'a, 'src>(
@@ -25,6 +26,24 @@ pub fn unify<'a, 'src>(
             (Term::Function(x_1, x_rest), Term::Function(y_1, y_rest)) => {
                 let subs = unify(x_1, y_1, &subs)?;
                 unify(x_rest, y_rest, &subs)
+            }
+            (Term::Type(name_1, args_1), Term::Type(name_2, args_2)) => {
+                if name_1 != name_2 {
+                    Err(Error::FailedToUnify(name_1.clone(), name_2.clone()))
+                } else {
+                    if args_1.len() != args_2.len() {
+                        Err(Error::FailedToUnify(
+                            format!("{} with {} args", name_1, args_1.len()),
+                            format!("{} with {} args", name_2, args_2.len()),
+                        ))
+                    } else {
+                        let mut subs = subs.clone();
+                        for (x_1, y_1) in args_1.iter().zip(args_2.iter()) {
+                            subs = unify(x_1, y_1, &subs)?;
+                        }
+                        Ok(subs)
+                    }
+                }
             }
             _ => Err(Error::FailedToUnify(format!("{:?}", x), format!("{:?}", y))),
         }
@@ -166,6 +185,51 @@ mod test {
 
         let mut expected_subs = Substitutions::new();
         expected_subs.insert("a".to_string(), &Term::Constant(Value::String));
+        assert_eq!(result, Ok(expected_subs));
+    }
+
+    #[test]
+    fn matching_single_arg_types() {
+        let var_a = Term::Type("List".to_string(), vec![Term::Constant(Value::String)]);
+        let var_b = Term::Type("List".to_string(), vec![Term::Constant(Value::String)]);
+
+        let mut subs = Substitutions::new();
+        let result = test_unification(&var_a, &var_b, &mut subs);
+
+        let expected_subs = Substitutions::new();
+        assert_eq!(result, Ok(expected_subs));
+    }
+
+    #[test]
+    fn matching_types_wrong_args_length() {
+        let var_a = Term::Type("List".to_string(), vec![Term::Constant(Value::String)]);
+        let var_b = Term::Type(
+            "List".to_string(),
+            vec![Term::Constant(Value::String), Term::Constant(Value::String)],
+        );
+
+        let mut subs = Substitutions::new();
+        let result = test_unification(&var_a, &var_b, &mut subs);
+
+        assert_eq!(
+            result,
+            Err(Error::FailedToUnify(
+                "List with 1 args".to_string(),
+                "List with 2 args".to_string(),
+            ))
+        );
+    }
+
+    #[test]
+    fn single_arg_types_with_var() {
+        let var_a = Term::Type("List".to_string(), vec![Term::Constant(Value::String)]);
+        let var_b = Term::Type("List".to_string(), vec![Term::Var("var-1".to_string())]);
+
+        let mut subs = Substitutions::new();
+        let result = test_unification(&var_a, &var_b, &mut subs);
+
+        let mut expected_subs = Substitutions::new();
+        expected_subs.insert("var-1".to_string(), &Term::Constant(Value::String));
         assert_eq!(result, Ok(expected_subs));
     }
 }

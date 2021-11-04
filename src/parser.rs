@@ -437,8 +437,8 @@ fn parse_singular_expression<'a>(
 }
 
 fn parse_contained_expression<'a, 'b>(
-    iter: &mut TokenIter<'a>,
-    _base: usize,
+    mut iter: &mut TokenIter<'a>,
+    base: usize,
     current: usize,
 ) -> Result<(Expr, usize), Error> {
     match iter.peek() {
@@ -472,6 +472,7 @@ fn parse_contained_expression<'a, 'b>(
             iter.next();
             result
         }
+        Some((Token::OpenBracket, _range)) => parse_list(&mut iter, base, current),
         Some((token, range)) => Err(Error::UnexpectedToken {
             found: token.to_string(),
             expected: "Expression token".to_string(),
@@ -480,6 +481,16 @@ fn parse_contained_expression<'a, 'b>(
         }),
         None => Err(Error::UnexpectedEnd),
     }
+}
+
+fn parse_list(iter: &mut TokenIter, _base: usize, current: usize) -> Result<(Expr, usize), Error> {
+    while !matches!(iter.peek(), Some((Token::CloseBracket, _range))) {
+        iter.next();
+    }
+
+    matches(&iter.next(), Token::CloseBracket)?;
+
+    Ok((Expr::List(vec![]), current))
 }
 
 fn parse_var_or_call<'a>(

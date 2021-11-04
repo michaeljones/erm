@@ -191,7 +191,7 @@ mod full {
         let src = r#"
         module Main exposing (..)
         main args =
-          String.join args
+          String.join "" args
         "#;
         let result = eval_with_args(src, vec!["Hello".to_string(), " world".to_string()], None);
         assert_eq!(

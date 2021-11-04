@@ -40,35 +40,40 @@ pub struct StringJoin {}
 
 impl Func for StringJoin {
     fn call<'a>(&self, args: Vec<values::Value>) -> Result<values::Value, Error> {
-        if args.len() != 1 {
+        if args.len() != 2 {
             return Err(Error::WrongArity);
         }
 
-        match args.first() {
-            Some(values::Value::List(entries)) => Ok(values::Value::String(
-                entries
-                    .iter()
-                    .flat_map(|value| {
-                        if let values::Value::String(string) = value {
-                            Some(string.clone())
-                        } else {
-                            None
-                        }
-                    })
-                    .collect::<Vec<String>>()
-                    .join(""),
-            )),
+        match (args.first(), args.last()) {
+            (Some(values::Value::String(joiner)), Some(values::Value::List(entries))) => {
+                Ok(values::Value::String(
+                    entries
+                        .iter()
+                        .flat_map(|value| {
+                            if let values::Value::String(string) = value {
+                                Some(string.clone())
+                            } else {
+                                None
+                            }
+                        })
+                        .collect::<Vec<String>>()
+                        .join(joiner),
+                ))
+            }
             _ => Err(Error::WrongArgumentType),
         }
     }
 
     fn term(&self) -> term::Term {
         term::Term::Function(
-            Box::new(term::Term::Type(
-                "List".to_string(),
-                vec![term::Term::Constant(term::Value::String)],
-            )),
             Box::new(term::Term::Constant(term::Value::String)),
+            Box::new(term::Term::Function(
+                Box::new(term::Term::Type(
+                    "List".to_string(),
+                    vec![term::Term::Constant(term::Value::String)],
+                )),
+                Box::new(term::Term::Constant(term::Value::String)),
+            )),
         )
     }
 }
