@@ -97,7 +97,7 @@ pub enum Token<'src> {
     #[regex("([A-Z][a-zA-Z0-9_]*\\.)*[a-z_][a-zA-Z0-9_]*")]
     LowerName(&'src str),
 
-    #[regex(r#"[+><!*-:|]+"#)]
+    #[regex(r#"[+><!*\-:|]+"#)]
     Operator(&'src str),
 
     #[regex("--[^\n]*")]

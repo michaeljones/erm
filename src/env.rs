@@ -306,14 +306,7 @@ pub fn get_binding(
     let full_name = target_name.to_string();
     log::trace!("get_binding: {:?}", full_name);
     match full_name.as_str() {
-        "Elm.Kernel.String.fromInt" => {
-            return Some(FoundBinding::BuiltInFunc(Rc::new(
-                builtins::StringFromInt {},
-            )))
-        }
-        "Elm.Kernel.String.join" => {
-            return Some(FoundBinding::BuiltInFunc(Rc::new(builtins::StringJoin {})))
-        }
+        // core/Basics
         "Elm.Kernel.Basics.add" => {
             return Some(FoundBinding::BuiltInFunc(Rc::new(builtins::Add {})))
         }
@@ -327,6 +320,19 @@ pub fn get_binding(
         "Elm.Kernel.Basics.lt" => return Some(FoundBinding::BuiltInFunc(Rc::new(builtins::Lt {}))),
         "Elm.Kernel.Basics.append" => {
             return Some(FoundBinding::BuiltInFunc(Rc::new(builtins::Append {})))
+        }
+        // core/String
+        "Elm.Kernel.String.fromInt" => {
+            return Some(FoundBinding::BuiltInFunc(Rc::new(
+                builtins::StringFromInt {},
+            )))
+        }
+        "Elm.Kernel.String.join" => {
+            return Some(FoundBinding::BuiltInFunc(Rc::new(builtins::StringJoin {})))
+        }
+        // core/List
+        "Elm.Kernel.List.sum" => {
+            return Some(FoundBinding::BuiltInFunc(Rc::new(builtins::ListSum {})))
         }
         _ => {}
     }

@@ -21,6 +21,7 @@ pub enum Error {
     TooManyArguments,
     Broken(&'static str, u32),
     ScopeError(env::Error),
+    ImpossiblyEmptyList,
 }
 
 pub struct Context {
@@ -408,14 +409,31 @@ fn if_expression_to_term(
 fn list_to_term(
     expressions: &Vec<Rc<Expr>>,
     context: &mut Context,
-    _environment: &env::Environment,
+    environment: &env::Environment,
 ) -> Result<Term, Error> {
     if expressions.is_empty() {
         Ok(Term::Type("List".to_string(), vec![context.unique_var()]))
     } else {
-        Err(Error::UnhandledExpression(
-            "List with elements".to_owned(),
-            line!(),
-        ))
+        let terms: Vec<Term> = expressions
+            .iter()
+            .map(|expr| expression_to_term(expr, context, environment))
+            .collect::<Result<_, _>>()?;
+
+        // Unify terms by comparing each item with its neighbour and making sure there are no
+        // issues unifying them with a consistent set of subs
+        let (_subs, term) = terms
+            .iter()
+            .fold(Err(Error::ImpossiblyEmptyList), |acc, term| match acc {
+                Err(Error::ImpossiblyEmptyList) => Ok((unify::Substitutions::new(), term)),
+                Err(err) => Err(err),
+                Ok((subs, last_term)) => unify::unify(term, last_term, &subs)
+                    .map(|subs| (subs, term))
+                    .map_err(Error::UnifyError),
+            })?;
+
+        // TODO: What is the best term to actually include from the list? The most basic? The most
+        // general?
+
+        Ok(Term::Type("List".to_string(), vec![term.clone()]))
     }
 }

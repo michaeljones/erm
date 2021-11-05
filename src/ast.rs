@@ -45,6 +45,10 @@ impl Import {
                 module_name: vec!["String".to_string()],
                 exposing: None,
             },
+            Import {
+                module_name: vec!["List".to_string()],
+                exposing: None,
+            },
         ]
     }
 }

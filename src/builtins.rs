@@ -245,3 +245,40 @@ impl Func for Append {
         )
     }
 }
+
+// Elm.Kernel.List.sum
+pub struct ListSum {}
+
+impl Func for ListSum {
+    fn call<'a>(&self, args: Vec<values::Value>) -> Result<values::Value, Error> {
+        if args.len() != 1 {
+            return Err(Error::WrongArity);
+        }
+
+        match args.first() {
+            Some(values::Value::List(entries)) => Ok(values::Value::Integer(
+                entries
+                    .iter()
+                    .flat_map(|value| {
+                        if let values::Value::Integer(int) = value {
+                            Some(int)
+                        } else {
+                            None
+                        }
+                    })
+                    .sum(),
+            )),
+            _ => Err(Error::WrongArgumentType),
+        }
+    }
+
+    fn term(&self) -> term::Term {
+        term::Term::Function(
+            Box::new(term::Term::Type(
+                "List".to_string(),
+                vec![term::Term::Constant(term::Value::Integer)],
+            )),
+            Box::new(term::Term::Constant(term::Value::Integer)),
+        )
+    }
+}

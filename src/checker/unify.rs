@@ -2,7 +2,7 @@ use im::HashMap;
 
 use super::term::Term;
 
-pub type Substitutions<'src> = HashMap<String, &'src Term>;
+pub type Substitutions = HashMap<String, Term>;
 
 #[derive(Debug, PartialEq)]
 pub enum Error {
@@ -13,8 +13,8 @@ pub enum Error {
 pub fn unify<'a, 'src>(
     x: &'src Term,
     y: &'src Term,
-    subs: &'a Substitutions<'src>,
-) -> Result<Substitutions<'src>, Error> {
+    subs: &'a Substitutions,
+) -> Result<Substitutions, Error> {
     if x == y {
         Ok(subs.clone())
     } else if let Term::Var(name) = x {
@@ -54,8 +54,8 @@ fn unify_variable<'a, 'src>(
     v_name: &'src String,
     v: &'src Term,
     x: &'src Term,
-    subs: &'a Substitutions<'src>,
-) -> Result<Substitutions<'src>, Error> {
+    subs: &'a Substitutions,
+) -> Result<Substitutions, Error> {
     if let Some(term) = subs.get(v_name) {
         return unify(term, x, subs);
     }
@@ -66,7 +66,7 @@ fn unify_variable<'a, 'src>(
         }
     }
 
-    Ok(subs.update(v_name.to_string(), x))
+    Ok(subs.update(v_name.to_string(), x.clone()))
 }
 
 #[cfg(test)]
@@ -77,8 +77,8 @@ mod test {
     fn test_unification<'a, 'src>(
         x: &'src Term,
         y: &'src Term,
-        mut subs: &'a Substitutions<'src>,
-    ) -> Result<Substitutions<'src>, Error> {
+        mut subs: &'a Substitutions,
+    ) -> Result<Substitutions, Error> {
         unify(&x, &y, &mut subs)
     }
 
@@ -107,7 +107,7 @@ mod test {
         let result = test_unification(&Term::Constant(Value::String), &var, &mut subs);
 
         let mut expected_subs = Substitutions::new();
-        expected_subs.insert("a".to_string(), &Term::Constant(Value::String));
+        expected_subs.insert("a".to_string(), Term::Constant(Value::String));
         assert_eq!(result, Ok(expected_subs));
     }
 
@@ -118,7 +118,7 @@ mod test {
         let result = test_unification(&var, &Term::Constant(Value::String), &mut subs);
 
         let mut expected_subs = Substitutions::new();
-        expected_subs.insert("a".to_string(), &Term::Constant(Value::String));
+        expected_subs.insert("a".to_string(), Term::Constant(Value::String));
         assert_eq!(result, Ok(expected_subs));
     }
 
@@ -130,7 +130,7 @@ mod test {
         let result = test_unification(&var_a, &var_b, &mut subs);
 
         let mut expected_subs = Substitutions::new();
-        expected_subs.insert("a".to_string(), &var_b);
+        expected_subs.insert("a".to_string(), var_b);
         assert_eq!(result, Ok(expected_subs));
     }
 
@@ -145,7 +145,7 @@ mod test {
         let result = test_unification(&var_a, &var_b, &mut subs);
 
         let mut expected_subs = Substitutions::new();
-        expected_subs.insert("a".to_string(), &var_b);
+        expected_subs.insert("a".to_string(), var_b);
         assert_eq!(result, Ok(expected_subs));
     }
 
@@ -184,7 +184,7 @@ mod test {
         let result = test_unification(&var_a, &var_b, &mut subs);
 
         let mut expected_subs = Substitutions::new();
-        expected_subs.insert("a".to_string(), &Term::Constant(Value::String));
+        expected_subs.insert("a".to_string(), Term::Constant(Value::String));
         assert_eq!(result, Ok(expected_subs));
     }
 
@@ -229,7 +229,7 @@ mod test {
         let result = test_unification(&var_a, &var_b, &mut subs);
 
         let mut expected_subs = Substitutions::new();
-        expected_subs.insert("var-1".to_string(), &Term::Constant(Value::String));
+        expected_subs.insert("var-1".to_string(), Term::Constant(Value::String));
         assert_eq!(result, Ok(expected_subs));
     }
 }

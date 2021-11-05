@@ -32,6 +32,9 @@ pub type ParseResult = Result<Module, Error>;
 pub fn parse<'src>(mut iter: &mut TokenIter<'src>) -> ParseResult {
     log::trace!("parse");
 
+    // Uncomment to print out whole token stream
+    // println!("{:?}", iter.collect::<Vec<_>>());
+
     matches(&iter.next(), Token::Module)?;
     matches_space(&iter.next())?;
     let name = extract_upper_name(&iter.next())?;
@@ -238,13 +241,13 @@ fn extract_precendence<'a>(stream_token: &Option<SrcToken<'a>>) -> Result<usize,
     }
 }
 
-fn parse_function_or_binding<'src>(
-    mut iter: &mut TokenIter<'src>,
+fn parse_function_or_binding(
+    iter: &mut TokenIter,
     base: usize,
     mut current: usize,
 ) -> Result<Stmt, Error> {
     let name = extract_lower_name(&iter.next())?;
-    consume_spaces(&mut iter);
+    consume_spaces(iter);
 
     let mut args = Vec::new();
     loop {
@@ -255,15 +258,15 @@ fn parse_function_or_binding<'src>(
         let arg = extract_pattern_name(&iter.next())?;
         args.push(arg);
 
-        consume_spaces(&mut iter);
+        consume_spaces(iter);
     }
 
     matches(&iter.next(), Token::Equals)?;
 
-    let indent = indent::consume_to_indented(&mut iter, base, current)?;
+    let indent = indent::consume_to_indented(iter, base, current)?;
     current = indent.extract();
 
-    let (expr, _curr) = parse_expression(&mut iter, current, current)?;
+    let (expr, _curr) = parse_expression(iter, current, current)?;
 
     if args.is_empty() {
         Ok(Stmt::Binding {
@@ -483,14 +486,42 @@ fn parse_contained_expression<'a, 'b>(
     }
 }
 
-fn parse_list(iter: &mut TokenIter, _base: usize, current: usize) -> Result<(Expr, usize), Error> {
-    while !matches!(iter.peek(), Some((Token::CloseBracket, _range))) {
-        iter.next();
+fn parse_list(iter: &mut TokenIter, base: usize, current: usize) -> Result<(Expr, usize), Error> {
+    matches(&iter.next(), Token::OpenBracket)?;
+
+    let mut expressions = Vec::new();
+
+    loop {
+        consume_spaces(iter);
+        if let Some((Token::CloseBracket, _range)) = iter.peek() {
+            break;
+        }
+
+        let (expr, _current) = parse_expression(iter, base, current)?;
+        expressions.push(Rc::new(expr));
+
+        consume_spaces(iter);
+
+        match iter.peek() {
+            Some((Token::CloseBracket, _range)) => break,
+            Some((Token::Comma, _range)) => {
+                matches(&iter.next(), Token::Comma)?;
+            }
+            Some((token, range)) => {
+                return Err(Error::UnexpectedToken {
+                    found: token.to_string(),
+                    expected: ", or ]".to_string(),
+                    range: range.clone(),
+                    line: line!(),
+                })
+            }
+            None => return Err(Error::UnexpectedEnd),
+        }
     }
 
     matches(&iter.next(), Token::CloseBracket)?;
 
-    Ok((Expr::List(vec![]), current))
+    Ok((Expr::List(expressions), current))
 }
 
 fn parse_var_or_call<'a>(
