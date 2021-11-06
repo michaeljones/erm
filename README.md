@@ -10,8 +10,9 @@ It is primarily a learning exercise.
 
 It does not really work at the moment.
 
-- [ ] Explicit import
-- [ ] List syntax
+- [x] Explicit import
+- [x] List syntax
+- [ ] Runnable binary with errors
 - [ ] Tuple syntax
 - [ ] Let-in blocks
 - [ ] Generic number handling
