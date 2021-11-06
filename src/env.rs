@@ -296,43 +296,42 @@ impl std::fmt::Debug for FoundBinding {
     }
 }
 
+#[derive(Debug, PartialEq)]
+pub enum GetBindingError {
+    Unknown,
+}
+
 /* Returns the binding for the target name and the environment in which that binding should be
   evaluated.
 */
 pub fn get_binding(
     environment: &Environment,
     target_name: &ast::LowerName,
-) -> Option<FoundBinding> {
+) -> Result<FoundBinding, GetBindingError> {
     let full_name = target_name.to_string();
     log::trace!("get_binding: {:?}", full_name);
     match full_name.as_str() {
         // core/Basics
-        "Elm.Kernel.Basics.add" => {
-            return Some(FoundBinding::BuiltInFunc(Rc::new(builtins::Add {})))
-        }
-        "Elm.Kernel.Basics.sub" => {
-            return Some(FoundBinding::BuiltInFunc(Rc::new(builtins::Sub {})))
-        }
-        "Elm.Kernel.Basics.mul" => {
-            return Some(FoundBinding::BuiltInFunc(Rc::new(builtins::Mul {})))
-        }
-        "Elm.Kernel.Basics.gt" => return Some(FoundBinding::BuiltInFunc(Rc::new(builtins::Gt {}))),
-        "Elm.Kernel.Basics.lt" => return Some(FoundBinding::BuiltInFunc(Rc::new(builtins::Lt {}))),
+        "Elm.Kernel.Basics.add" => return Ok(FoundBinding::BuiltInFunc(Rc::new(builtins::Add {}))),
+        "Elm.Kernel.Basics.sub" => return Ok(FoundBinding::BuiltInFunc(Rc::new(builtins::Sub {}))),
+        "Elm.Kernel.Basics.mul" => return Ok(FoundBinding::BuiltInFunc(Rc::new(builtins::Mul {}))),
+        "Elm.Kernel.Basics.gt" => return Ok(FoundBinding::BuiltInFunc(Rc::new(builtins::Gt {}))),
+        "Elm.Kernel.Basics.lt" => return Ok(FoundBinding::BuiltInFunc(Rc::new(builtins::Lt {}))),
         "Elm.Kernel.Basics.append" => {
-            return Some(FoundBinding::BuiltInFunc(Rc::new(builtins::Append {})))
+            return Ok(FoundBinding::BuiltInFunc(Rc::new(builtins::Append {})))
         }
         // core/String
         "Elm.Kernel.String.fromInt" => {
-            return Some(FoundBinding::BuiltInFunc(Rc::new(
+            return Ok(FoundBinding::BuiltInFunc(Rc::new(
                 builtins::StringFromInt {},
             )))
         }
         "Elm.Kernel.String.join" => {
-            return Some(FoundBinding::BuiltInFunc(Rc::new(builtins::StringJoin {})))
+            return Ok(FoundBinding::BuiltInFunc(Rc::new(builtins::StringJoin {})))
         }
         // core/List
         "Elm.Kernel.List.sum" => {
-            return Some(FoundBinding::BuiltInFunc(Rc::new(builtins::ListSum {})))
+            return Ok(FoundBinding::BuiltInFunc(Rc::new(builtins::ListSum {})))
         }
         _ => {}
     }
@@ -344,7 +343,7 @@ pub fn get_binding(
                 module_imports: environment.module_imports.clone(),
                 local_scopes: environment.local_scopes.iter().skip(i).cloned().collect(),
             };
-            return Some(FoundBinding::WithEnv(value.clone(), env));
+            return Ok(FoundBinding::WithEnv(value.clone(), env));
         }
     }
 
@@ -355,11 +354,11 @@ pub fn get_binding(
                 module_imports: module_import.module_scope.module_imports.clone(),
                 local_scopes: vector![module_import.module_scope.local_scope.clone()],
             };
-            return Some(FoundBinding::WithEnv(value.clone(), env));
+            return Ok(FoundBinding::WithEnv(value.clone(), env));
         }
     }
 
-    None
+    Err(GetBindingError::Unknown)
 }
 
 pub fn get_operator<'a, 'src>(environment: &Environment, target_name: &str) -> Option<Operator> {

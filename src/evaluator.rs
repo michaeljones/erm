@@ -13,8 +13,9 @@ use super::project;
 #[derive(Debug, PartialEq)]
 pub enum Error {
     UnsupportedOperation,
-    UnknownFunction(String, u32),
+    UnknownFunction(String),
     UnknownBinding(String),
+    UnexpectedBinding(String),
     FunctionError(builtins::Error),
     WrongArity,
     ScopeError(env::Error),
@@ -41,7 +42,7 @@ pub fn evaluate(
 }
 
 fn evaluate_expression(expr: &Expr, environment: &env::Environment) -> Result<Value, Error> {
-    match dbg!(expr) {
+    match expr {
         Expr::Bool(bool) => Ok(Value::Bool(*bool)),
         Expr::Integer(int) => Ok(Value::Integer(*int)),
         Expr::Float(float) => Ok(Value::Float(*float)),
@@ -68,7 +69,7 @@ fn evaluate_expression(expr: &Expr, environment: &env::Environment) -> Result<Va
             args,
         } => evaluate_function_call(function_name, args, &environment),
         Expr::VarName(name) => env::get_binding(&environment, name)
-            .ok_or(Error::UnknownBinding(name.to_string()))
+            .map_err(|_| Error::UnknownBinding(name.to_string()))
             .and_then(|binding| match binding {
                 FoundBinding::WithEnv(Binding::UserBinding(expr), env) => {
                     evaluate_expression(&expr, &env)
@@ -85,7 +86,7 @@ fn evaluate_function_call<'a, 'b, 'src: 'd, 'd>(
     environment: &env::Environment,
 ) -> Result<Value, Error> {
     match env::get_binding(&environment, name) {
-        Some(FoundBinding::BuiltInFunc(func)) => {
+        Ok(FoundBinding::BuiltInFunc(func)) => {
             let arg_values = arg_exprs
                 .iter()
                 .map(|expr| evaluate_expression(&expr, &environment))
@@ -93,7 +94,7 @@ fn evaluate_function_call<'a, 'b, 'src: 'd, 'd>(
 
             func.call(arg_values).map_err(Error::FunctionError)
         }
-        Some(FoundBinding::WithEnv(Binding::UserFunc(stmt_rc), _env)) => match &*stmt_rc {
+        Ok(FoundBinding::WithEnv(Binding::UserFunc(stmt_rc), _env)) => match &*stmt_rc {
             Stmt::Function { args, expr, .. } => {
                 if arg_exprs.len() != args.len() {
                     Err(Error::WrongArity)
@@ -116,24 +117,24 @@ fn evaluate_function_call<'a, 'b, 'src: 'd, 'd>(
                     let arg_scope = env::Scope::from_bindings(pairs);
 
                     let environment = env::add_local_scope(environment, arg_scope);
-                    println!("Environment: {:#?}", environment);
+                    // println!("Environment: {:#?}", environment);
                     evaluate_expression(&expr, &environment)
                 }
             }
-            _ => Err(Error::UnknownFunction(name.to_string(), line!())),
+            _ => Err(Error::UnknownFunction(name.to_string())),
         },
-        Some(FoundBinding::WithEnv(Binding::UserBinding(expr), _env)) => {
-            println!("expr {:#?}", expr);
+        Ok(FoundBinding::WithEnv(Binding::UserBinding(expr), _env)) => {
+            // println!("expr {:#?}", expr);
             match &*expr {
                 Expr::VarName(lower_name) => {
                     evaluate_function_call(lower_name, arg_exprs, environment)
                 }
-                _ => Err(Error::UnknownFunction(name.to_string(), line!())),
+                _ => Err(Error::UnknownFunction(name.to_string())),
             }
         }
         entry => {
-            println!("{:?}", entry);
-            Err(Error::UnknownFunction(name.to_string(), line!()))
+            log::error!("{:?} {} {:#?}", entry, name.to_string(), environment);
+            Err(Error::UnknownFunction(name.to_string()))
         }
     }
 }

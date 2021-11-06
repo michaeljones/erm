@@ -53,7 +53,7 @@ pub fn check(
 
     // let mut var_generator = VarGenerator::new();
     match env::get_binding(&environment, &main_name) {
-        Some(FoundBinding::WithEnv(Binding::UserBinding(expr), _env)) => {
+        Ok(FoundBinding::WithEnv(Binding::UserBinding(expr), _env)) => {
             // Generate Term version of Expr tree
             //
             // Unify Term version of Expr tree with a simple Term of:
@@ -78,7 +78,7 @@ pub fn check(
                 .map(|_| ())
                 .map_err(Error::UnifyError)
         }
-        Some(FoundBinding::WithEnv(Binding::UserFunc(stmt_rc), _env)) => match &*stmt_rc {
+        Ok(FoundBinding::WithEnv(Binding::UserFunc(stmt_rc), _env)) => match &*stmt_rc {
             Stmt::Function { expr, args, .. } => {
                 let mut bindings = env::Bindings::new();
                 for arg in args {
@@ -151,16 +151,16 @@ fn expression_to_term(
         // argument to the function that we might be in the scope of
         {
             match env::get_binding(&environment, &name) {
-                Some(FoundBinding::BuiltInFunc(func)) => {
+                Ok(FoundBinding::BuiltInFunc(func)) => {
                     // TODO: Don't resolve with fake args - just resolve directly to a term definition
                     // for a function
                     // let args = Vec::new();
                     Ok(func.term())
                 }
-                Some(FoundBinding::WithEnv(Binding::UserBinding(expr), env)) => {
+                Ok(FoundBinding::WithEnv(Binding::UserBinding(expr), env)) => {
                     expression_to_term(&expr, context, &env)
                 }
-                Some(FoundBinding::WithEnv(Binding::UserArg(term), _env)) => Ok(term.clone()),
+                Ok(FoundBinding::WithEnv(Binding::UserArg(term), _env)) => Ok(term.clone()),
                 result => {
                     // println!("Environment: {:#?}", environment);
                     println!("Result: {:#?}", result);
@@ -242,7 +242,7 @@ fn call_to_term(
     environment: &env::Environment,
 ) -> Result<Term, Error> {
     match env::get_binding(&environment, function_name) {
-        Some(FoundBinding::BuiltInFunc(func)) => {
+        Ok(FoundBinding::BuiltInFunc(func)) => {
             let signature_term = func.term();
 
             let arg_terms = call_args
@@ -257,7 +257,7 @@ fn call_to_term(
                 &environment
             ))
         }
-        Some(FoundBinding::WithEnv(Binding::UserFunc(stmt_rc), _env)) => match &*stmt_rc {
+        Ok(FoundBinding::WithEnv(Binding::UserFunc(stmt_rc), _env)) => match &*stmt_rc {
             Stmt::Function {
                 name: _,
                 args,
@@ -321,7 +321,7 @@ fn call_to_term(
             }
             _ => Err(Error::UnknownFunction(function_name.clone(), line!())),
         },
-        Some(FoundBinding::WithEnv(Binding::UserBinding(expr), _env)) => {
+        Ok(FoundBinding::WithEnv(Binding::UserBinding(expr), _env)) => {
             println!("expr {:#?}", expr);
             match &*expr {
                 Expr::VarName(lower_name) => {
