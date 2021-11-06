@@ -16,7 +16,7 @@ mod lists {
     fn empty_list_literal() {
         let src = r#"
         module Main exposing (..)
-        main =
+        main args =
           String.join "," []
         "#;
         let result = eval(src, None);
@@ -27,7 +27,7 @@ mod lists {
     fn list_literal_with_strings() {
         let src = r#"
         module Main exposing (..)
-        main =
+        main args =
           String.join "," ["Hello", " World"]
         "#;
         let result = eval(src, None);
@@ -43,7 +43,7 @@ mod lists {
     fn list_literal_with_inconsistent_types() {
         let src = r#"
         module Main exposing (..)
-        main =
+        main args =
           String.join "," ["Hello", 1]
         "#;
         let result = eval(src, None);
@@ -64,7 +64,7 @@ mod lists {
     fn list_sum() {
         let src = r#"
         module Main exposing (..)
-        main =
+        main args =
           String.fromInt (List.sum [1, 2])
         "#;
         let result = eval(src, None);

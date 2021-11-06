@@ -19,7 +19,7 @@ mod imports {
         let src = r#"
         module Main exposing (..)
         import Does.Not.Exist
-        main =
+        main args =
           String.append "Hello, " "World"
         "#;
         let result = eval(src, None);
@@ -37,7 +37,7 @@ mod imports {
         let src = r#"
         module Main exposing (..)
         import Impl.Test exposing (does_not_exist)
-        main =
+        main args =
           String.append "Hello, " "World"
         "#;
         let result = eval(src, None);
@@ -55,7 +55,7 @@ mod imports {
         let src = r#"
         module Main exposing (..)
         import Impl.Test
-        main =
+        main args =
           Impl.Test.hello
         "#;
 
@@ -77,7 +77,7 @@ mod imports {
         let src = r#"
         module Main exposing (..)
         import Impl.Test
-        main =
+        main args =
           Impl.Test.hello_from_import
         "#;
 
@@ -99,7 +99,7 @@ mod imports {
         let src = r#"
         module Main exposing (..)
         import Impl.Test exposing (hello)
-        main =
+        main args =
           hello
         "#;
         let settings = project::Settings {

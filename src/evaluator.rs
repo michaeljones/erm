@@ -28,26 +28,16 @@ pub fn evaluate(
 ) -> Result<Value, Error> {
     log::trace!("evaluate");
 
-    if args.is_empty() {
-        let main_name = ast::LowerName::simple("main".to_string());
-        match env::get_binding(&environment, &main_name) {
-            Some(FoundBinding::WithEnv(Binding::UserBinding(expr), _env)) => {
-                evaluate_expression(&expr, &environment)
-            }
-            _ => Err(Error::UnknownBinding("main".to_string())),
-        }
-    } else {
-        let call_main = Expr::Call {
-            function_name: ast::LowerName::simple("main".to_string()),
-            args: vec![Rc::new(Expr::List(
-                args.iter()
-                    .map(|entry| Rc::new(Expr::String(String::from(entry))))
-                    .collect(),
-            ))],
-        };
+    let call_main = Expr::Call {
+        function_name: ast::LowerName::simple("main".to_string()),
+        args: vec![Rc::new(Expr::List(
+            args.iter()
+                .map(|entry| Rc::new(Expr::String(String::from(entry))))
+                .collect(),
+        ))],
+    };
 
-        evaluate_expression(&call_main, &environment)
-    }
+    evaluate_expression(&call_main, &environment)
 }
 
 fn evaluate_expression(expr: &Expr, environment: &env::Environment) -> Result<Value, Error> {

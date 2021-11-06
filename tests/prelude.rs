@@ -19,7 +19,7 @@ mod prelude {
         // general functions without importing it
         let src = r#"
         module Main exposing (..)
-        main =
+        main args =
           String.append "Hello, " "World"
         "#;
         let result = eval(src, None);
@@ -36,7 +36,7 @@ mod prelude {
         let src = r#"
         module Main exposing (..)
         import Impl.Test
-        main =
+        main args =
           Impl.Test.hello_from_prelude
         "#;
 
