@@ -4,12 +4,8 @@ version = "0.1.0"
 authors = ["Michael Jones <michael@zaptic.com>"]
 
 [[bin]]
-name = "erm-dump"
-path = "src/dump.rs"
-
-[[bin]]
-name = "erm-check"
-path = "src/check.rs"
+name = "erm"
+path = "src/bin/run.rs"
 
 [dependencies]
 logos = "0.11.4"

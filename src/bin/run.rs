@@ -19,6 +19,7 @@ use erm::project;
 
 #[derive(Debug)]
 enum Error {
+    FileError,
     ParserError,
     EvaluateError,
     ScopeError(env::Error),
@@ -34,12 +35,7 @@ fn dump_file(filename: &str, _quiet: bool) -> Result<(), Error> {
     let result = Token::lexer(&contents);
     let mut iter = result.spanned().peekable();
 
-    let module = parser::parse(&mut iter).map_err(|err| {
-        println!("{:?}", &err);
-        Error::ParserError
-    })?;
-
-    println!("{:#?}", &module);
+    let module = parser::parse(&mut iter).map_err(|_| Error::ParserError)?;
 
     let args = vec!["example_arg".to_string()];
 
@@ -48,16 +44,14 @@ fn dump_file(filename: &str, _quiet: bool) -> Result<(), Error> {
     let scope = env::ModuleScope::from_module(&basics, &settings).map_err(Error::ScopeError)?;
     let environment = env::Environment::from_module_scope(scope);
 
-    evaluater::evaluate(&module, args, &environment, &settings).map_err(|err| {
-        println!("{:?}", &err);
-        Error::EvaluateError
-    })?;
+    evaluater::evaluate(&module, args, &environment, &settings)
+        .map_err(|_| Error::EvaluateError)?;
 
     Ok(())
 }
 
 fn main() -> Result<(), Error> {
-    let matches = App::new("elm-parser-dump")
+    let matches = App::new("erm")
         .version("0.1")
         .arg(Arg::with_name("quiet").short("q").long("quiet"))
         .arg(Arg::with_name("path").index(1))
@@ -67,7 +61,7 @@ fn main() -> Result<(), Error> {
         Some(path) => {
             let quiet = matches.is_present("quiet");
 
-            let attr = std::fs::metadata(path).expect("file not found");
+            let attr = std::fs::metadata(path).map_err(|_| Error::FileError)?;
 
             if attr.is_dir() {
                 Ok(())
