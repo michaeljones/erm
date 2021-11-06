@@ -7,8 +7,8 @@ use unindent::unindent;
 use erm::ast;
 use erm::checker;
 use erm::env;
-use erm::evaluater;
-use erm::evaluater::values::Value;
+use erm::evaluator;
+use erm::evaluator::values::Value;
 use erm::lexer::Range;
 use erm::parser;
 use erm::project;
@@ -53,7 +53,7 @@ pub fn pretty_print(result: &Result<Value, Error>) -> String {
 pub enum Error {
     ParserError(parser::Error, String),
     CheckError(checker::Error),
-    EvaluateError(evaluater::Error),
+    EvaluateError(evaluator::Error),
     ScopeError(env::Error),
 }
 
@@ -82,5 +82,5 @@ pub fn eval_with_args(
     let environment = env::Environment::from_module_scope(scope);
 
     checker::check(&module, &environment, &settings).map_err(Error::CheckError)?;
-    evaluater::evaluate(&module, args, &environment, &settings).map_err(Error::EvaluateError)
+    evaluator::evaluate(&module, args, &environment, &settings).map_err(Error::EvaluateError)
 }

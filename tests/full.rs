@@ -8,7 +8,7 @@ mod common;
 mod full {
 
     use erm::checker::{self, unify};
-    use erm::evaluater::values::Value;
+    use erm::evaluator::values::Value;
     use erm::parser;
 
     use common::{eval, eval_with_args, pretty_print, string, Error};

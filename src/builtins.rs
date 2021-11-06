@@ -1,5 +1,5 @@
 use super::checker::term;
-use super::evaluater::values;
+use super::evaluator::values;
 
 #[derive(Debug, PartialEq)]
 pub enum Error {

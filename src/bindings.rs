@@ -2,7 +2,7 @@ use std::rc::Rc;
 
 use super::ast::{Expr, Stmt};
 use super::checker::term;
-use super::evaluater::values;
+use super::evaluator::values;
 
 #[derive(Clone)]
 pub enum Binding {

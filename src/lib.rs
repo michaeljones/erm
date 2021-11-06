@@ -9,7 +9,7 @@ pub mod bindings;
 pub mod builtins;
 pub mod checker;
 pub mod env;
-pub mod evaluater;
+pub mod evaluator;
 pub mod lexer;
 pub mod parser;
 pub mod project;
