@@ -19,16 +19,10 @@ use erm::parser;
 use erm::project;
 
 fn run(
-    filename: &str,
+    contents: String,
     program_args: Vec<String>,
     settings: erm::project::Settings,
 ) -> Result<evaluator::values::Value, Error> {
-    let mut f = File::open(filename).map_err(|_| Error::FileError)?;
-
-    let mut contents = String::new();
-    f.read_to_string(&mut contents)
-        .map_err(|_| Error::FileError)?;
-
     let result = Token::lexer(&contents);
     let mut iter = result.spanned().peekable();
 
@@ -61,6 +55,15 @@ fn init_logger() {
         .init();
 }
 
+fn filter_hash_bang(code: String) -> String {
+    code.split("\n")
+        .enumerate()
+        // Remove the first line if it starts with #!
+        .filter(|(index, line)| !(*index == 0 && line.starts_with("#!")))
+        .map(|(_, line)| line)
+        .collect()
+}
+
 fn main() -> () {
     // Set up logger
     init_logger();
@@ -79,29 +82,52 @@ fn main() -> () {
 
     let settings = project::Settings::new();
 
-    match matches.value_of("path") {
-        Some(path) => {
-            let result = std::fs::metadata(path)
-                .map_err(|_| Error::FileError)
-                .and_then(|attr| {
-                    if attr.is_dir() {
-                        Err(Error::FileError)
-                    } else {
-                        run(path, program_args, settings)
-                    }
-                });
+    let contents_result = matches
+        .value_of("path")
+        // Treat '-' as no argument so we default to standardin
+        .and_then(|path| if path == "-" { None } else { Some(path) })
+        .map_or_else(
+            // If we don't have a path from the args
+            || {
+                let mut input = String::new();
 
-            match result {
-                Err(error) => {
-                    println!("{}", error::to_user_output(error));
-                }
-                Ok(value) => {
-                    println!("{:?}", value);
-                }
-            }
+                std::io::stdin()
+                    .read_to_string(&mut input)
+                    .map_err(|_| Error::FileError)?;
+
+                Ok(input)
+            },
+            // If we have a path from the args
+            |path| {
+                std::fs::metadata(path)
+                    .map_err(|_| Error::FileError)
+                    .and_then(|attr| {
+                        if attr.is_dir() {
+                            Err(Error::FileError)
+                        } else {
+                            let mut f = File::open(path).map_err(|_| Error::FileError)?;
+
+                            let mut contents = String::new();
+                            f.read_to_string(&mut contents)
+                                .map_err(|_| Error::FileError)?;
+
+                            Ok(filter_hash_bang(contents))
+                        }
+                    })
+            },
+        );
+
+    let result = contents_result.and_then(|contents| run(contents, program_args, settings));
+
+    match result {
+        Err(error) => {
+            println!("{}", error::to_user_output(error));
         }
-        None => {
-            println!("Usage: erm [path]");
+        Ok(evaluator::values::Value::String(string)) => {
+            println!("{}", string);
+        }
+        Ok(value) => {
+            println!("{:?}", value);
         }
     }
 }

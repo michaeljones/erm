@@ -15,11 +15,19 @@ pub fn to_user_output(error: Error) -> String {
         Error::FileError => "File error".to_string(),
         Error::ParserError(error) => match error {
             parser::Error::UnexpectedToken {
-                expected: _,
-                found: _,
+                expected,
+                found,
                 range: _,
                 line: _,
-            } => format!("Error text not written ({})", line!()),
+            } => format!(
+                r#"Unexpected token.
+
+Found: {}
+Expected: {}
+
+                "#,
+                found, expected
+            ),
             parser::Error::UnexpectedEnd => format!("Error text not written ({})", line!()),
             parser::Error::Indent { range: _ } => format!("Error text not written ({})", line!()),
             parser::Error::TokensRemaining(_) => format!("Error text not written ({})", line!()),
