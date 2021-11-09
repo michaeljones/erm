@@ -1,0 +1,11 @@
+---
+source: tests/full.rs
+expression: result
+
+---
+Type error:
+
+FailedToUnify(
+    "Constant(String)",
+    "Constant(Integer)",
+)

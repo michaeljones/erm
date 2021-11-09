@@ -1,11 +1,19 @@
+use codespan_reporting::diagnostic::{Diagnostic, Label};
+use codespan_reporting::files::SimpleFiles;
+use codespan_reporting::term;
+use codespan_reporting::term::termcolor::Buffer;
+
+use crate::checker;
 use crate::env;
 use crate::evaluator;
+use crate::lexer::Range;
 use crate::parser;
 
 #[derive(Debug)]
 pub enum Error {
     FileError,
-    ParserError(parser::Error),
+    ParserError(parser::Error, String),
+    CheckError(checker::Error),
     EvaluateError(evaluator::Error),
     ScopeError(env::Error),
 }
@@ -13,23 +21,24 @@ pub enum Error {
 pub fn to_user_output(error: Error) -> String {
     match error {
         Error::FileError => "File error".to_string(),
-        Error::ParserError(error) => match error {
+        Error::ParserError(error, source) => match error {
             parser::Error::UnexpectedToken {
-                expected,
-                found,
-                range: _,
-                line: _,
+                expected: _,
+                found: _,
+                range,
             } => format!(
                 r#"Unexpected token.
 
-Found: {}
-Expected: {}
-
-                "#,
-                found, expected
+{}"#,
+                pretty_print(source, range)
             ),
             parser::Error::UnexpectedEnd => format!("Error text not written ({})", line!()),
-            parser::Error::Indent { range: _ } => format!("Error text not written ({})", line!()),
+            parser::Error::Indent { range } => format!(
+                r#"Unexpected indentation.
+
+{}"#,
+                pretty_print(source, range)
+            ),
             parser::Error::TokensRemaining(_) => format!("Error text not written ({})", line!()),
             parser::Error::NoOperand => format!("Error text not written ({})", line!()),
             parser::Error::NoOperator => format!("Error text not written ({})", line!()),
@@ -38,12 +47,32 @@ Expected: {}
             parser::Error::UnknownExposing(_) => format!("Error text not written ({})", line!()),
             parser::Error::NegativePrecendence => format!("Error text not written ({})", line!()),
         },
+        Error::CheckError(error) => match error {
+            checker::Error::UnknownBinding(_) => format!("Error text not written ({})", line!()),
+            checker::Error::UnhandledExpression(_) => {
+                format!("Error text not written ({})", line!())
+            }
+            checker::Error::UnifyError(unify_error) => format!(
+                r#"Type error:
+
+{:#?}"#,
+                unify_error
+            ),
+            checker::Error::UnknownFunction(_) => format!("Error text not written ({})", line!()),
+            checker::Error::UnknownOperator(_) => format!("Error text not written ({})", line!()),
+            checker::Error::UnknownVarName(_) => format!("Error text not written ({})", line!()),
+            checker::Error::ArgumentMismatch(_) => format!("Error text not written ({})", line!()),
+            checker::Error::TooManyArguments => format!("Error text not written ({})", line!()),
+            checker::Error::Broken(_) => format!("Error text not written ({})", line!()),
+            checker::Error::ScopeError(_) => format!("Error text not written ({})", line!()),
+            checker::Error::ImpossiblyEmptyList => format!("Error text not written ({})", line!()),
+        },
         Error::EvaluateError(error) => match error {
             evaluator::Error::UnsupportedOperation => {
                 format!("Error text not written ({})", line!())
             }
-            evaluator::Error::UnknownFunction(name) => {
-                format!("Unable to find function: {}", name)
+            evaluator::Error::UnknownFunction => {
+                format!("Unable to find function")
             }
             evaluator::Error::UnknownBinding(name) => format!("Unknown binding: {}", name),
             evaluator::Error::FunctionError(_) => format!("Error text not written ({})", line!()),
@@ -59,4 +88,19 @@ Expected: {}
             env::Error::FailedToParse(_, _) => format!("Error text not written ({})", line!()),
         },
     }
+}
+
+pub fn pretty_print(source: String, range: Range) -> String {
+    let mut files = SimpleFiles::new();
+    let file_id = files.add("sample", source);
+    let diagnostic = Diagnostic::error().with_labels(vec![Label::primary(file_id, range.clone())]);
+
+    let mut writer = Buffer::no_color();
+    let config = codespan_reporting::term::Config::default();
+
+    let _ = term::emit(&mut writer, &config, &files, &diagnostic);
+
+    std::str::from_utf8(writer.as_slice())
+        .unwrap_or("Failure")
+        .to_string()
 }

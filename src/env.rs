@@ -1,15 +1,17 @@
-use im::vector;
 use std::collections::HashMap;
 use std::io::Read;
 use std::path::PathBuf;
 use std::rc::Rc;
 
+use im::vector;
+use logos::Logos;
+
 use super::ast::{self, Associativity, Module, Stmt};
 use super::bindings::Binding;
 use super::builtins;
+use super::lexer::Token;
 use super::parser;
 use super::project;
-use crate::parse_source;
 
 #[derive(Debug, Clone)]
 pub struct Operator {
@@ -187,7 +189,9 @@ impl ModuleScope {
                 file.read_to_string(&mut source)
                     .map_err(|_| Error::FailedToRead(filename.clone()))?;
 
-                let mut module = parse_source(source)
+                let tokens = Token::lexer(&source);
+                let mut iter = tokens.spanned().peekable();
+                let mut module = parser::parse(&mut iter)
                     .map_err(|err| Error::FailedToParse(filename.clone(), err))?;
 
                 // See readme for how Elm determines when to include prelude
@@ -280,20 +284,10 @@ impl Environment {
     }
 }
 
+#[derive(Debug)]
 pub enum FoundBinding {
-    BuiltInFunc(Rc<dyn builtins::Func>),
+    BuiltInFunc(ast::LowerName),
     WithEnv(Binding, Environment),
-}
-
-impl std::fmt::Debug for FoundBinding {
-    // Implemented because we can't derive Debug for 'dyn Func'
-    // TODO: Add more detail
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            FoundBinding::BuiltInFunc(_) => write!(f, "FoundBinding::BuiltInFunc"),
-            FoundBinding::WithEnv(_, _) => write!(f, "FoundBinding::WithEnv"),
-        }
-    }
 }
 
 #[derive(Debug, PartialEq)]
@@ -310,6 +304,22 @@ pub fn get_binding(
 ) -> Result<FoundBinding, GetBindingError> {
     let full_name = target_name.to_string();
     log::trace!("get_binding: {:?}", full_name);
+    match full_name.as_str() {
+        // core/Basics
+        "Elm.Kernel.Basics.add" => return Ok(FoundBinding::BuiltInFunc(target_name.clone())),
+        "Elm.Kernel.Basics.sub" => return Ok(FoundBinding::BuiltInFunc(target_name.clone())),
+        "Elm.Kernel.Basics.mul" => return Ok(FoundBinding::BuiltInFunc(target_name.clone())),
+        "Elm.Kernel.Basics.gt" => return Ok(FoundBinding::BuiltInFunc(target_name.clone())),
+        "Elm.Kernel.Basics.lt" => return Ok(FoundBinding::BuiltInFunc(target_name.clone())),
+        "Elm.Kernel.Basics.append" => return Ok(FoundBinding::BuiltInFunc(target_name.clone())),
+        // core/String
+        "Elm.Kernel.String.fromInt" => return Ok(FoundBinding::BuiltInFunc(target_name.clone())),
+        "Elm.Kernel.String.join" => return Ok(FoundBinding::BuiltInFunc(target_name.clone())),
+        // core/List
+        "Elm.Kernel.List.sum" => return Ok(FoundBinding::BuiltInFunc(target_name.clone())),
+        _ => {}
+    }
+    /*
     match full_name.as_str() {
         // core/Basics
         "Elm.Kernel.Basics.add" => return Ok(FoundBinding::BuiltInFunc(Rc::new(builtins::Add {}))),
@@ -335,6 +345,7 @@ pub fn get_binding(
         }
         _ => {}
     }
+    */
 
     // TODO: Only check local scope if there is not module section to the LowerName
     for (i, scope) in environment.local_scopes.iter().enumerate() {
@@ -359,6 +370,27 @@ pub fn get_binding(
     }
 
     Err(GetBindingError::Unknown)
+}
+
+pub fn get_built_in(target_name: &ast::LowerName) -> Option<Rc<dyn builtins::Func>> {
+    let full_name = target_name.to_string();
+    match full_name.as_str() {
+        // core/Basics
+        "Elm.Kernel.Basics.add" => return Some(Rc::new(builtins::Add {})),
+        "Elm.Kernel.Basics.sub" => return Some(Rc::new(builtins::Sub {})),
+        "Elm.Kernel.Basics.mul" => return Some(Rc::new(builtins::Mul {})),
+        "Elm.Kernel.Basics.gt" => return Some(Rc::new(builtins::Gt {})),
+        "Elm.Kernel.Basics.lt" => return Some(Rc::new(builtins::Lt {})),
+        "Elm.Kernel.Basics.append" => return Some(Rc::new(builtins::Append {})),
+        // core/String
+        "Elm.Kernel.String.fromInt" => return Some(Rc::new(builtins::StringFromInt {})),
+        "Elm.Kernel.String.join" => return Some(Rc::new(builtins::StringJoin {})),
+        // core/List
+        "Elm.Kernel.List.sum" => return Some(Rc::new(builtins::ListSum {})),
+        _ => {}
+    }
+
+    None
 }
 
 pub fn get_operator<'a, 'src>(environment: &Environment, target_name: &str) -> Option<Operator> {

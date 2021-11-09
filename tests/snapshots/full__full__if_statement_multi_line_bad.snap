@@ -1,0 +1,14 @@
+---
+source: tests/full.rs
+expression: result
+
+---
+Unexpected indentation.
+
+error: 
+  ┌─ sample:4:2
+  │
+4 │  5
+  │  ^
+
+

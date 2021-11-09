@@ -1,0 +1,14 @@
+---
+source: tests/lists.rs
+expression: result
+
+---
+Unexpected token.
+
+error: 
+  ┌─ sample:3:27
+  │
+3 │   String.join "," ["Hello", 1]
+  │                           ^
+
+

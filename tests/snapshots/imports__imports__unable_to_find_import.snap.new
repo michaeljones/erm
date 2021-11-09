@@ -1,0 +1,6 @@
+---
+source: tests/imports.rs
+expression: result
+
+---
+Error text not written (86)

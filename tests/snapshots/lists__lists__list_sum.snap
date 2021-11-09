@@ -1,0 +1,14 @@
+---
+source: tests/lists.rs
+expression: result
+
+---
+Unexpected token.
+
+error: 
+  ┌─ sample:3:30
+  │
+3 │   String.fromInt (List.sum [1, 2])
+  │                              ^
+
+

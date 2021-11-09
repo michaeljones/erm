@@ -1,17 +1,15 @@
 extern crate codespan_reporting;
 extern crate erm;
 extern crate im;
+extern crate insta;
+extern crate logos;
 extern crate unindent;
 
 mod common;
 
 mod full {
 
-    use erm::checker::{self, unify};
-    use erm::evaluator::values::Value;
-    use erm::parser;
-
-    use common::{eval, eval_with_args, pretty_print, string, Error};
+    use common::{eval, eval_with_args};
 
     #[test]
     fn basic_string() {
@@ -21,7 +19,7 @@ mod full {
           "hello, world"
         "#;
         let result = eval(src, None);
-        assert_eq!(result, Ok(string("hello, world")));
+        insta::assert_snapshot!(result);
     }
 
     #[test]
@@ -32,7 +30,7 @@ mod full {
           String.fromInt 5
         ";
         let result = eval(src, None);
-        assert_eq!(result, Ok(string("5")));
+        insta::assert_snapshot!(result);
     }
 
     #[test]
@@ -43,7 +41,7 @@ mod full {
           String.fromInt (1 + 3)
         ";
         let result = eval(src, None);
-        assert_eq!(result, Ok(string("4")));
+        insta::assert_snapshot!(result);
     }
 
     #[test]
@@ -54,25 +52,18 @@ mod full {
           String.fromInt (1 + "string")
         "#;
         let result = eval(src, None);
-        assert_eq!(
-            result,
-            Err(Error::CheckError(checker::Error::UnifyError(
-                unify::Error::FailedToUnify(
-                    "Constant(String)".to_string(),
-                    "Constant(Integer)".to_string()
-                )
-            )))
-        );
+        insta::assert_snapshot!(result);
     }
 
     #[test]
     fn arithmetic_precedence() {
-        let module = "
+        let src = "
         module Main exposing (..)
         main args =
           String.fromInt (10 - 11 * 12 + 13)
         ";
-        assert_eq!(eval(module, None), Ok(Value::String("-109".to_string())));
+        let result = eval(src, None);
+        insta::assert_snapshot!(result);
     }
 
     #[test]
@@ -83,7 +74,7 @@ mod full {
           String.fromInt ((10 - 11) * (12 + 13))
         ";
         let result = eval(src, None);
-        assert_eq!(result, Ok(string("-25")), "{}", pretty_print(&result));
+        insta::assert_snapshot!(result);
     }
 
     #[test]
@@ -99,7 +90,7 @@ mod full {
           stringFromBool (8 + 12 > 7 + 5)
         "#;
         let result = eval(src, None);
-        assert_eq!(result, Ok(string("True")), "{}", pretty_print(&result));
+        insta::assert_snapshot!(result);
     }
 
     #[test]
@@ -111,17 +102,18 @@ mod full {
           stringFromBool (8 + 12 < 7 + 5)
         "#;
         let result = eval(src, None);
-        assert_eq!(result, Ok(string("False")), "{}", pretty_print(&result));
+        insta::assert_snapshot!(result);
     }
 
     #[test]
     fn string_concatenation() {
-        let module = r#"
+        let src = r#"
         module Main exposing (..)
         main args =
           "a" ++ "bc" ++ "def"
         "#;
-        assert_eq!(eval(module, None), Ok(string("abcdef")));
+        let result = eval(src, None);
+        insta::assert_snapshot!(result);
     }
 
     #[test]
@@ -132,7 +124,7 @@ mod full {
           if True then "5" else "4"
         "#;
         let result = eval(src, None);
-        assert_eq!(result, Ok(string("5")), "{}", pretty_print(&result));
+        insta::assert_snapshot!(result);
     }
 
     #[test]
@@ -146,7 +138,7 @@ mod full {
             "4"
         "#;
         let result = eval(src, None);
-        assert_eq!(result, Ok(string("4")), "{}", pretty_print(&result));
+        insta::assert_snapshot!(result);
     }
 
     #[test]
@@ -160,13 +152,7 @@ mod full {
             4
         "#;
         let result = eval(src, None);
-        assert_eq!(
-            result,
-            Err(Error::ParserError(
-                parser::Error::Indent { range: 55..56 },
-                src.to_string()
-            )),
-        );
+        insta::assert_snapshot!(result);
     }
 
     #[test]
@@ -183,7 +169,7 @@ mod full {
             "23"
         "#;
         let result = eval(src, None);
-        assert_eq!(result, Ok(string("12")), "{}", pretty_print(&result));
+        insta::assert_snapshot!(result);
     }
 
     #[test]
@@ -194,77 +180,6 @@ mod full {
           String.join "" args
         "#;
         let result = eval_with_args(src, vec!["Hello".to_string(), " world".to_string()], None);
-        assert_eq!(
-            result,
-            Ok(string("Hello world")),
-            "{}",
-            pretty_print(&result)
-        );
-    }
-
-    #[test]
-    fn function_call_simple() {
-        let src = r#"
-        module Main exposing (..)
-        add1 x = x + 1
-        main args =
-          String.fromInt (add1 5)
-        "#;
-        let result = eval(src, None);
-        assert_eq!(result, Ok(string("6")), "{}", pretty_print(&result));
-    }
-
-    #[test]
-    fn function_call_with_paren_args() {
-        let src = r#"
-        module Main exposing (..)
-        addTogether x y = x + y
-        main args =
-          String.fromInt (addTogether (addTogether 2 5) 8)
-        "#;
-        let result = eval(src, None);
-        assert_eq!(result, Ok(string("15")), "{}", pretty_print(&result));
-    }
-
-    #[test]
-    fn function_clashes_with_operator_func() {
-        // This is to make sure that our attempt to call the user defined 'add' doesn't clash with the
-        // 'add' that is defined as the implementation of '+' in basics
-        let src = r#"
-        module Main exposing (..)
-        add x y = x + y
-        main args =
-          String.fromInt (add 2 5)
-        "#;
-        let result = eval(src, None);
-        assert_eq!(result, Ok(string("7")), "{}", pretty_print(&result));
-    }
-
-    #[test]
-    fn function_calls_function() {
-        // Make sure we can call a function from a function
-        let src = r#"
-        module Main exposing (..)
-        sub1 y = y - 1
-        add1 x = sub1 x + 2
-        main args =
-          String.fromInt (add1 2)
-        "#;
-        let result = eval(src, None);
-        assert_eq!(result, Ok(string("3")), "{}", pretty_print(&result));
-    }
-
-    #[test]
-    fn function_calls_same_args() {
-        // To cover a bug where we get confused when functions have the same arg name
-        let src = r#"
-        module Main exposing (..)
-        sub1 x = x - 1
-        add1 x = sub1 x + 2
-        main args =
-          String.fromInt (add1 2)
-        "#;
-        let result = eval(src, None);
-        assert_eq!(result, Ok(string("3")), "{}", pretty_print(&result));
+        insta::assert_snapshot!(result);
     }
 }

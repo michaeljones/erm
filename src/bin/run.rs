@@ -26,7 +26,8 @@ fn run(
     let result = Token::lexer(&contents);
     let mut iter = result.spanned().peekable();
 
-    let module = parser::parse(&mut iter).map_err(Error::ParserError)?;
+    let module =
+        parser::parse(&mut iter).map_err(|err| Error::ParserError(err, contents.clone()))?;
     let module = erm::ast::with_default_imports(&module);
     let scope = env::ModuleScope::from_module(&module, &settings).map_err(Error::ScopeError)?;
     let environment = env::Environment::from_module_scope(scope);

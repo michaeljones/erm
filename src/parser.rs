@@ -12,7 +12,6 @@ pub enum Error {
         expected: String,
         found: String,
         range: Range,
-        line: u32,
     },
     UnexpectedEnd,
     Indent {
@@ -38,6 +37,7 @@ pub fn parse<'src>(mut iter: &mut TokenIter<'src>) -> ParseResult {
     matches(&iter.next(), Token::Module)?;
     matches_space(&iter.next())?;
     let name = extract_upper_name(&iter.next())?;
+    log::trace!("module {:?}", name);
     matches_space(&iter.next())?;
     let exposing = parse_exposing(&mut iter)?;
 
@@ -161,6 +161,7 @@ fn parse_imports<'a>(mut iter: &mut TokenIter<'a>) -> Result<Vec<Import>, Error>
 
 // Statements
 fn parse_statements<'a>(mut iter: &mut TokenIter<'a>) -> Result<Vec<Rc<Stmt>>, Error> {
+    log::trace!("parse_statements: {:?}", iter.peek());
     let mut statements = vec![];
 
     let base = 0;
@@ -177,12 +178,12 @@ fn parse_statements<'a>(mut iter: &mut TokenIter<'a>) -> Result<Vec<Rc<Stmt>>, E
                 statements.push(Rc::new(statement));
             }
             Some((token, range)) => {
+                log::error!("UnexpectedToken");
                 return Err(Error::UnexpectedToken {
                     found: token.to_string(),
                     expected: "Expression token".to_string(),
                     range: range.clone(),
-                    line: line!(),
-                })
+                });
             }
             None => break,
         }
@@ -199,6 +200,7 @@ fn parse_infix<'src>(
     _base: usize,
     mut _current: usize,
 ) -> Result<Stmt, Error> {
+    log::trace!("parse_infix: {:?}", iter.peek());
     matches(&iter.next(), Token::Infix)?;
     consume_spaces(&mut iter);
 
@@ -231,12 +233,14 @@ fn extract_precendence<'a>(stream_token: &Option<SrcToken<'a>>) -> Result<usize,
         Some((Token::LiteralInteger(int), _range)) => {
             usize::try_from(*int).map_err(|_| Error::NegativePrecendence)
         }
-        Some((token, range)) => Err(Error::UnexpectedToken {
-            found: token.to_string(),
-            expected: Token::UpperName("").to_string(),
-            range: range.clone(),
-            line: line!(),
-        }),
+        Some((token, range)) => {
+            log::error!("UnexpectedToken");
+            Err(Error::UnexpectedToken {
+                found: token.to_string(),
+                expected: Token::UpperName("").to_string(),
+                range: range.clone(),
+            })
+        }
         None => Err(Error::UnexpectedEnd),
     }
 }
@@ -246,6 +250,7 @@ fn parse_function_or_binding(
     base: usize,
     mut current: usize,
 ) -> Result<Stmt, Error> {
+    log::trace!("parse_function_or_binding: {:?}", iter.peek());
     let name = extract_lower_name(&iter.next())?;
     consume_spaces(iter);
 
@@ -289,6 +294,7 @@ fn parse_expression<'a, 'b>(
     base: usize,
     current: usize,
 ) -> Result<(Expr, usize), Error> {
+    log::trace!("parse_expression: {:?}", iter.peek());
     match iter.peek() {
         Some((Token::If, _range)) => parse_if_expression(&mut iter, base, current),
         None => Err(Error::UnexpectedEnd),
@@ -307,7 +313,8 @@ fn parse_binary_expression<'a, 'b>(
     base: usize,
     current: usize,
 ) -> Result<(Expr, usize), Error> {
-    let (expr, mut current) = parse_singular_expression(&mut iter, base, current)?;
+    log::trace!("parse_binary_expression: {:?}", iter.peek());
+    let (expr, mut current) = parse_var_or_call(&mut iter, base, current)?;
 
     // We have to keep parsing to look for more parts to this expression but if we find a change in
     // indentation that indicates the end of the scope for this expression then we just want to
@@ -329,7 +336,7 @@ fn parse_binary_expression<'a, 'b>(
 
         process_stacks(operator, &mut operator_stack, &mut operand_stack)?;
 
-        let (right_hand_expr, curr) = parse_singular_expression(&mut iter, base, current)?;
+        let (right_hand_expr, curr) = parse_var_or_call(&mut iter, base, current)?;
         operand_stack.push(right_hand_expr);
         current = curr;
 
@@ -420,30 +427,35 @@ fn precedence<'a>(operator: &'a str) -> Result<usize, Error> {
     }
 }
 
+/* Parse a single variable or expression that might appear as an argument in a call site. ie.
+ * nothing with args unless it is wrapped in parens or anything containing syntax.
+ */
 fn parse_singular_expression<'a>(
-    mut iter: &mut TokenIter<'a>,
+    iter: &mut TokenIter<'a>,
     base: usize,
     current: usize,
 ) -> Result<(Expr, usize), Error> {
+    log::trace!("parse_singular_expression: {:?}", iter.peek());
     match iter.peek() {
         Some((Token::OpenParen, _range)) => {
             matches(&iter.next(), Token::OpenParen)?;
-            let (expr, current) = parse_expression(&mut iter, base, current)?;
-            let current = indent::must_consume_to_at_least(&mut iter, base, current)?;
+            let (expr, current) = parse_expression(iter, base, current)?;
+            let current = indent::must_consume_to_at_least(iter, base, current)?;
             matches(&iter.next(), Token::CloseParen)?;
             Ok((expr, current))
         }
-        Some((Token::LowerName(_), _range)) => parse_var_or_call(&mut iter, base, current),
+        // Some((Token::LowerName(_), _range)) => parse_var_or_call(iter, base, current),
         None => Err(Error::UnexpectedEnd),
-        _ => parse_contained_expression(&mut iter, base, current),
+        _ => parse_contained_expression(iter, base, current),
     }
 }
 
 fn parse_contained_expression<'a, 'b>(
-    mut iter: &mut TokenIter<'a>,
+    iter: &mut TokenIter<'a>,
     base: usize,
     current: usize,
 ) -> Result<(Expr, usize), Error> {
+    log::trace!("parse_contained_expression: {:?}", iter.peek());
     match iter.peek() {
         Some((Token::LiteralInteger(int), _range)) => {
             let result = Ok((Expr::Integer(*int), current));
@@ -475,18 +487,26 @@ fn parse_contained_expression<'a, 'b>(
             iter.next();
             result
         }
-        Some((Token::OpenBracket, _range)) => parse_list(&mut iter, base, current),
-        Some((token, range)) => Err(Error::UnexpectedToken {
-            found: token.to_string(),
-            expected: "Expression token".to_string(),
-            range: range.clone(),
-            line: line!(),
-        }),
+        Some((Token::OpenBracket, _range)) => parse_list_literal(iter, base, current),
+        Some((token, range)) => {
+            log::error!("UnexpectedToken");
+            Err(Error::UnexpectedToken {
+                found: token.to_string(),
+                expected: "Expression token".to_string(),
+                range: range.clone(),
+            })
+        }
         None => Err(Error::UnexpectedEnd),
     }
 }
 
-fn parse_list(iter: &mut TokenIter, base: usize, current: usize) -> Result<(Expr, usize), Error> {
+/* Parse the contents between [ and ] */
+fn parse_list_literal(
+    iter: &mut TokenIter,
+    base: usize,
+    current: usize,
+) -> Result<(Expr, usize), Error> {
+    log::trace!("parse_list_literal: {:?}", iter.peek());
     matches(&iter.next(), Token::OpenBracket)?;
 
     let mut expressions = Vec::new();
@@ -508,12 +528,12 @@ fn parse_list(iter: &mut TokenIter, base: usize, current: usize) -> Result<(Expr
                 matches(&iter.next(), Token::Comma)?;
             }
             Some((token, range)) => {
+                log::error!("UnexpectedToken");
                 return Err(Error::UnexpectedToken {
                     found: token.to_string(),
                     expected: ", or ]".to_string(),
                     range: range.clone(),
-                    line: line!(),
-                })
+                });
             }
             None => return Err(Error::UnexpectedEnd),
         }
@@ -524,22 +544,27 @@ fn parse_list(iter: &mut TokenIter, base: usize, current: usize) -> Result<(Expr
     Ok((Expr::List(expressions), current))
 }
 
+/* A single value or a call site with some kind of single token or expression that we assume
+ * resolves to a function if there are space separated arguments after it.
+ */
 fn parse_var_or_call<'a>(
-    mut iter: &mut TokenIter<'a>,
+    iter: &mut TokenIter<'a>,
     base: usize,
     mut current: usize,
 ) -> Result<(Expr, usize), Error> {
-    let name = extract_lower_name(&iter.next())?;
+    log::trace!("parse_var_or_call: {:?}", iter.peek());
+    let (var_or_func_expr, curr) = parse_singular_expression(iter, base, current)?;
+    current = curr;
 
     // We have to keep parsing to look for more parts to this expression but if we find a change in
     // indentation that indicates the end of the scope for this expression then we just want to
     // return the expression we've found so far and allow the level up to deal with the change in
     // scope.
-    let indent = indent::consume_to_indented(&mut iter, base, current)?;
+    let indent = indent::consume_to_indented(iter, base, current)?;
     if indent.in_scope() {
         current = indent.extract();
     } else {
-        return Ok((Expr::VarName(name), indent.extract()));
+        return Ok((var_or_func_expr, indent.extract()));
     }
 
     let mut args = Vec::new();
@@ -548,7 +573,8 @@ fn parse_var_or_call<'a>(
         match iter.peek() {
             Some((Token::Operator(_), _range))
             | Some((Token::CloseParen, _range))
-            | Some((Token::Then, _range)) => {
+            | Some((Token::Then, _range))
+            | Some((Token::Else, _range)) => {
                 // On certain tokens we know we've finish this 'var or call' and so we can exit and
                 // let the parse_expression code handle it
                 break;
@@ -556,7 +582,7 @@ fn parse_var_or_call<'a>(
             _ => {}
         }
 
-        let (argument_expr, curr) = parse_singular_expression(&mut iter, base, current)?;
+        let (argument_expr, curr) = parse_singular_expression(iter, base, current)?;
         current = curr;
         args.push(Rc::new(argument_expr));
 
@@ -564,7 +590,7 @@ fn parse_var_or_call<'a>(
         // then any whitespace afterwards (to reach the next operator if there is one) but if we
         // find that we're no longer in the indentation scope of the expression then we assume
         // we've reached the end of it and continue with processing what we've got so far
-        let indent = indent::consume_to_indented(&mut iter, base, current)?;
+        let indent = indent::consume_to_indented(iter, base, current)?;
         if indent.in_scope() {
             current = indent.extract();
         } else {
@@ -573,11 +599,11 @@ fn parse_var_or_call<'a>(
     }
 
     if args.is_empty() {
-        Ok((Expr::VarName(name), current))
+        Ok((var_or_func_expr, current))
     } else {
         Ok((
             Expr::Call {
-                function_name: name,
+                function: Rc::new(var_or_func_expr),
                 args,
             },
             current,
@@ -590,6 +616,7 @@ fn parse_if_expression<'a>(
     base: usize,
     mut current: usize,
 ) -> Result<(Expr, usize), Error> {
+    log::trace!("parse_if_expression: {:?}", iter.peek());
     matches(&iter.next(), Token::If)?;
     current = indent::must_consume_to_indented(&mut iter, base, current)?;
     let (condition, curr) = parse_expression(&mut iter, current, current)?;
@@ -624,11 +651,16 @@ fn matches<'a>(stream_token: &Option<SrcToken<'a>>, match_token: Token<'a>) -> R
             if token == &match_token {
                 Ok(())
             } else {
+                log::error!(
+                    "UnexpectedToken. Expected: {:?} Found: {:?} \n\n {:?}",
+                    match_token,
+                    token,
+                    backtrace::Backtrace::new()
+                );
                 Err(Error::UnexpectedToken {
                     found: token.to_string(),
                     expected: match_token.to_string(),
                     range: range.clone(),
-                    line: line!(),
                 })
             }
         }
@@ -639,12 +671,14 @@ fn matches<'a>(stream_token: &Option<SrcToken<'a>>, match_token: Token<'a>) -> R
 fn matches_space<'a>(stream_token: &Option<SrcToken<'a>>) -> Result<(), Error> {
     match stream_token {
         Some((Token::Space(_), _range)) => Ok(()),
-        Some((token, range)) => Err(Error::UnexpectedToken {
-            found: token.to_string(),
-            expected: "Space".to_string(),
-            range: range.clone(),
-            line: line!(),
-        }),
+        Some((token, range)) => {
+            log::error!("UnexpectedToken");
+            Err(Error::UnexpectedToken {
+                found: token.to_string(),
+                expected: "Space".to_string(),
+                range: range.clone(),
+            })
+        }
         None => Err(Error::UnexpectedEnd),
     }
 }
@@ -654,12 +688,14 @@ fn extract_upper_name<'a>(stream_token: &Option<SrcToken<'a>>) -> Result<Vec<Str
         Some((Token::UpperName(name), _range)) => {
             Ok(name.split(".").map(|str| str.to_string()).collect())
         }
-        Some((token, range)) => Err(Error::UnexpectedToken {
-            found: token.to_string(),
-            expected: Token::UpperName("").to_string(),
-            range: range.clone(),
-            line: line!(),
-        }),
+        Some((token, range)) => {
+            log::error!("UnexpectedToken");
+            Err(Error::UnexpectedToken {
+                found: token.to_string(),
+                expected: Token::UpperName("").to_string(),
+                range: range.clone(),
+            })
+        }
         None => Err(Error::UnexpectedEnd),
     }
 }
@@ -667,12 +703,14 @@ fn extract_upper_name<'a>(stream_token: &Option<SrcToken<'a>>) -> Result<Vec<Str
 fn extract_lower_name<'a>(stream_token: &Option<SrcToken<'a>>) -> Result<LowerName, Error> {
     match stream_token {
         Some((Token::LowerName(name), _range)) => Ok(LowerName::from(name.to_string())),
-        Some((token, range)) => Err(Error::UnexpectedToken {
-            found: token.to_string(),
-            expected: Token::LowerName("").to_string(),
-            range: range.clone(),
-            line: line!(),
-        }),
+        Some((token, range)) => {
+            log::error!("UnexpectedToken");
+            Err(Error::UnexpectedToken {
+                found: token.to_string(),
+                expected: Token::LowerName("").to_string(),
+                range: range.clone(),
+            })
+        }
         None => Err(Error::UnexpectedEnd),
     }
 }
@@ -680,12 +718,14 @@ fn extract_lower_name<'a>(stream_token: &Option<SrcToken<'a>>) -> Result<LowerNa
 fn extract_operator<'a>(stream_token: &Option<SrcToken<'a>>) -> Result<&'a str, Error> {
     match stream_token {
         Some((Token::Operator(op), _range)) => Ok(op),
-        Some((token, range)) => Err(Error::UnexpectedToken {
-            found: token.to_string(),
-            expected: Token::Operator("").to_string(),
-            range: range.clone(),
-            line: line!(),
-        }),
+        Some((token, range)) => {
+            log::error!("UnexpectedToken");
+            Err(Error::UnexpectedToken {
+                found: token.to_string(),
+                expected: Token::Operator("").to_string(),
+                range: range.clone(),
+            })
+        }
         None => Err(Error::UnexpectedEnd),
     }
 }
@@ -693,12 +733,14 @@ fn extract_operator<'a>(stream_token: &Option<SrcToken<'a>>) -> Result<&'a str, 
 fn extract_pattern_name<'a>(stream_token: &Option<SrcToken<'a>>) -> Result<Pattern, Error> {
     match stream_token {
         Some((Token::LowerName(name), _range)) => Ok(Pattern::Name(name.to_string())),
-        Some((token, range)) => Err(Error::UnexpectedToken {
-            found: token.to_string(),
-            expected: Token::LowerName("").to_string(),
-            range: range.clone(),
-            line: line!(),
-        }),
+        Some((token, range)) => {
+            log::error!("UnexpectedToken");
+            Err(Error::UnexpectedToken {
+                found: token.to_string(),
+                expected: Token::LowerName("").to_string(),
+                range: range.clone(),
+            })
+        }
         None => Err(Error::UnexpectedEnd),
     }
 }
@@ -708,12 +750,14 @@ fn extract_associativity<'a>(stream_token: &Option<SrcToken<'a>>) -> Result<Asso
         Some((Token::LowerName("left"), _range)) => Ok(Associativity::Left),
         Some((Token::LowerName("right"), _range)) => Ok(Associativity::Right),
         Some((Token::LowerName("non"), _range)) => Ok(Associativity::Non),
-        Some((token, range)) => Err(Error::UnexpectedToken {
-            found: token.to_string(),
-            expected: "LowerName with 'left', 'right', or 'non".to_string(),
-            range: range.clone(),
-            line: line!(),
-        }),
+        Some((token, range)) => {
+            log::error!("UnexpectedToken");
+            Err(Error::UnexpectedToken {
+                found: token.to_string(),
+                expected: "LowerName with 'left', 'right', or 'non".to_string(),
+                range: range.clone(),
+            })
+        }
         None => Err(Error::UnexpectedEnd),
     }
 }
