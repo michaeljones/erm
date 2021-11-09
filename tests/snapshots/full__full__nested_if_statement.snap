@@ -1,0 +1,6 @@
+---
+source: tests/full.rs
+expression: result
+
+---
+12

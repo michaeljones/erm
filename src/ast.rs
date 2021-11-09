@@ -132,7 +132,7 @@ pub enum Associativity {
     Non,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Pattern {
     Name(String),
 }
@@ -169,7 +169,7 @@ pub enum Expr {
         else_branch: Rc<Expr>,
     },
     Call {
-        function_name: LowerName,
+        function: Rc<Expr>,
         args: Vec<Rc<Expr>>,
     },
     VarName(LowerName),

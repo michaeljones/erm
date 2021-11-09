@@ -1,6 +1,7 @@
 extern crate codespan_reporting;
 extern crate erm;
 extern crate im;
+extern crate logos;
 extern crate unindent;
 
 mod common;
@@ -9,10 +10,9 @@ mod imports {
 
     use std::path::PathBuf;
 
-    use erm::env;
     use erm::project;
 
-    use common::{eval, pretty_print, string, Error};
+    use common::eval;
 
     #[test]
     fn unable_to_find_import() {
@@ -23,12 +23,7 @@ mod imports {
           String.append "Hello, " "World"
         "#;
         let result = eval(src, None);
-        assert_eq!(
-            result,
-            Err(Error::ScopeError(env::Error::UnableToFindModule(
-                "Does.Not.Exist".to_string()
-            )))
-        );
+        insta::assert_snapshot!(result);
     }
 
     /*
@@ -64,12 +59,7 @@ mod imports {
         };
 
         let result = eval(src, Some(settings));
-        assert_eq!(
-            result,
-            Ok(string("Hello from Impl.Test")),
-            "{}",
-            pretty_print(&result)
-        );
+        insta::assert_snapshot!(result);
     }
 
     #[test]
@@ -86,12 +76,7 @@ mod imports {
         };
 
         let result = eval(src, Some(settings));
-        assert_eq!(
-            result,
-            Ok(string("Hello from Impl.Test.Other")),
-            "{}",
-            pretty_print(&result)
-        );
+        insta::assert_snapshot!(result);
     }
 
     #[test]
@@ -107,11 +92,6 @@ mod imports {
         };
 
         let result = eval(src, Some(settings));
-        assert_eq!(
-            result,
-            Ok(string("Hello from Impl.Test")),
-            "{}",
-            pretty_print(&result)
-        );
+        insta::assert_snapshot!(result);
     }
 }

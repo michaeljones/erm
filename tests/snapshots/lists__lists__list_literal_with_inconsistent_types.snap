@@ -1,0 +1,11 @@
+---
+source: tests/lists.rs
+expression: result
+
+---
+Type error:
+
+FailedToUnify(
+    "Constant(Integer)",
+    "Constant(String)",
+)

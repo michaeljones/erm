@@ -1,6 +1,7 @@
 extern crate codespan_reporting;
 extern crate erm;
 extern crate im;
+extern crate logos;
 extern crate unindent;
 
 mod common;
@@ -11,7 +12,7 @@ mod prelude {
 
     use erm::project;
 
-    use common::{eval, pretty_print, string};
+    use common::eval;
 
     #[test]
     fn use_built_in_string_module() {
@@ -23,12 +24,7 @@ mod prelude {
           String.append "Hello, " "World"
         "#;
         let result = eval(src, None);
-        assert_eq!(
-            result,
-            Ok(string("Hello, World")),
-            "{}",
-            pretty_print(&result)
-        );
+        insta::assert_snapshot!(result);
     }
 
     #[test]
@@ -45,11 +41,6 @@ mod prelude {
         };
 
         let result = eval(src, Some(settings));
-        assert_eq!(
-            result,
-            Ok(string("Hello, from prelude")),
-            "{}",
-            pretty_print(&result)
-        );
+        insta::assert_snapshot!(result);
     }
 }

@@ -1,16 +1,14 @@
 extern crate codespan_reporting;
 extern crate erm;
 extern crate im;
+extern crate logos;
 extern crate unindent;
 
 mod common;
 
 mod lists {
 
-    use erm::checker;
-    use erm::checker::unify;
-
-    use common::{eval, pretty_print, string, Error};
+    use common::eval;
 
     #[test]
     fn empty_list_literal() {
@@ -20,7 +18,7 @@ mod lists {
           String.join "," []
         "#;
         let result = eval(src, None);
-        assert_eq!(result, Ok(string("")), "{}", pretty_print(&result));
+        insta::assert_snapshot!(result);
     }
 
     #[test]
@@ -31,12 +29,7 @@ mod lists {
           String.join "," ["Hello", " World"]
         "#;
         let result = eval(src, None);
-        assert_eq!(
-            result,
-            Ok(string("Hello, World")),
-            "{}",
-            pretty_print(&result)
-        );
+        insta::assert_snapshot!(result);
     }
 
     #[test]
@@ -47,17 +40,7 @@ mod lists {
           String.join "," ["Hello", 1]
         "#;
         let result = eval(src, None);
-        assert_eq!(
-            result,
-            Err(Error::CheckError(checker::Error::UnifyError(
-                unify::Error::FailedToUnify(
-                    "Constant(Integer)".to_string(),
-                    "Constant(String)".to_string()
-                )
-            ))),
-            "{}",
-            pretty_print(&result)
-        );
+        insta::assert_snapshot!(result);
     }
 
     #[test]
@@ -68,6 +51,6 @@ mod lists {
           String.fromInt (List.sum [1, 2])
         "#;
         let result = eval(src, None);
-        assert_eq!(result, Ok(string("3")), "{}", pretty_print(&result));
+        insta::assert_snapshot!(result);
     }
 }

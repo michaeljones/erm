@@ -1,0 +1,6 @@
+---
+source: tests/prelude.rs
+expression: result
+
+---
+Hello, from prelude

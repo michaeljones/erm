@@ -1,0 +1,6 @@
+---
+source: tests/imports.rs
+expression: result
+
+---
+Hello from Impl.Test.Other
