@@ -1,0 +1,6 @@
+---
+source: tests/functions.rs
+expression: result
+
+---
+8

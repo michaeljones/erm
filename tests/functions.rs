@@ -87,4 +87,28 @@ mod functions {
         let result = eval(src, None);
         insta::assert_snapshot!(result);
     }
+
+    #[test]
+    fn function_two_partially_applied() {
+        let src = r#"
+        module Main exposing (..)
+        add x y = x + y
+        main args =
+          String.fromInt ((add 3) ((add 2) 3))
+        "#;
+        let result = eval(src, None);
+        insta::assert_snapshot!(result);
+    }
+
+    #[test]
+    fn function_double_partially_applied() {
+        let src = r#"
+        module Main exposing (..)
+        add x y z = x + y + z
+        main args =
+          String.fromInt (((add 3) 4) 5)
+        "#;
+        let result = eval(src, None);
+        insta::assert_snapshot!(result);
+    }
 }
