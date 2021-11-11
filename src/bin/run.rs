@@ -48,7 +48,7 @@ fn init_logger() {
                 record
                     .line()
                     .map(|num| num.to_string())
-                    .unwrap_or("-".to_string()),
+                    .unwrap_or_else(|| "-".to_string()),
                 record.level(),
                 record.args()
             )
@@ -57,7 +57,7 @@ fn init_logger() {
 }
 
 fn filter_hash_bang(code: String) -> String {
-    code.split("\n")
+    code.split('\n')
         .enumerate()
         // Remove the first line if it starts with #!
         .filter(|(index, line)| !(*index == 0 && line.starts_with("#!")))
@@ -65,7 +65,7 @@ fn filter_hash_bang(code: String) -> String {
         .collect()
 }
 
-fn main() -> () {
+fn main() {
     // Set up logger
     init_logger();
 
@@ -79,7 +79,7 @@ fn main() -> () {
     let program_args: Vec<String> = matches
         .values_of("arguments")
         .map(|values| values.map(|value| value.to_string()).collect())
-        .unwrap_or(vec![]);
+        .unwrap_or_else(Vec::new);
 
     let settings = project::Settings::new();
 

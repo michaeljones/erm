@@ -12,7 +12,7 @@ pub struct Module {
 
 pub fn with_default_imports(module: &Module) -> Module {
     log::trace!("with_default_imports");
-    let mut imports = Import::prelude().clone();
+    let mut imports = Import::prelude();
     imports.append(&mut module.imports.clone());
 
     Module {
@@ -84,12 +84,12 @@ impl LowerName {
         let (modules, access) = segments
             .into_iter()
             .map(|str| str.to_string())
-            .partition(|name| name.starts_with(|ch| ch >= 'A' && ch <= 'Z'));
+            .partition(|name| name.starts_with(|ch| ('A'..='Z').contains(&ch)));
 
         LowerName { modules, access }
     }
 
-    pub fn to_string(&self) -> String {
+    pub fn as_string(&self) -> String {
         self.modules
             .iter()
             .cloned()

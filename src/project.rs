@@ -5,9 +5,15 @@ pub struct Settings {
 }
 
 impl Settings {
-    pub fn new() -> Settings {
-        Settings {
+    pub fn new() -> Self {
+        Self {
             source_directories: vec![],
         }
+    }
+}
+
+impl Default for Settings {
+    fn default() -> Self {
+        Self::new()
     }
 }

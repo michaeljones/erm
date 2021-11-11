@@ -71,9 +71,7 @@ pub fn to_user_output(error: Error) -> String {
             evaluator::Error::UnsupportedOperation => {
                 format!("Error text not written ({})", line!())
             }
-            evaluator::Error::UnknownFunction => {
-                format!("Unable to find function")
-            }
+            evaluator::Error::UnknownFunction => "Unable to find function".to_string(),
             evaluator::Error::UnknownBinding(name) => format!("Unknown binding: {}", name),
             evaluator::Error::FunctionError(_) => {
                 format!("Error text not written ({}) {:?}", line!(), error)
@@ -107,7 +105,7 @@ pub fn to_user_output(error: Error) -> String {
 pub fn pretty_print(source: String, range: Range) -> String {
     let mut files = SimpleFiles::new();
     let file_id = files.add("sample", source);
-    let diagnostic = Diagnostic::error().with_labels(vec![Label::primary(file_id, range.clone())]);
+    let diagnostic = Diagnostic::error().with_labels(vec![Label::primary(file_id, range)]);
 
     let mut writer = Buffer::no_color();
     let config = codespan_reporting::term::Config::default();

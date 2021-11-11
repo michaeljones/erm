@@ -10,11 +10,7 @@ pub enum Error {
     UnhandledCase(u32),
 }
 
-pub fn unify<'a, 'src>(
-    x: &'src Term,
-    y: &'src Term,
-    subs: &'a Substitutions,
-) -> Result<Substitutions, Error> {
+pub fn unify(x: &Term, y: &Term, subs: &Substitutions) -> Result<Substitutions, Error> {
     if x == y {
         Ok(subs.clone())
     } else if let Term::Var(name) = x {
@@ -24,25 +20,23 @@ pub fn unify<'a, 'src>(
     } else {
         match (x, y) {
             (Term::Function(x_1, x_rest), Term::Function(y_1, y_rest)) => {
-                let subs = unify(x_1, y_1, &subs)?;
+                let subs = unify(x_1, y_1, subs)?;
                 unify(x_rest, y_rest, &subs)
             }
             (Term::Type(name_1, args_1), Term::Type(name_2, args_2)) => {
                 if name_1 != name_2 {
                     Err(Error::FailedToUnify(name_1.clone(), name_2.clone()))
+                } else if args_1.len() != args_2.len() {
+                    Err(Error::FailedToUnify(
+                        format!("{} with {} args", name_1, args_1.len()),
+                        format!("{} with {} args", name_2, args_2.len()),
+                    ))
                 } else {
-                    if args_1.len() != args_2.len() {
-                        Err(Error::FailedToUnify(
-                            format!("{} with {} args", name_1, args_1.len()),
-                            format!("{} with {} args", name_2, args_2.len()),
-                        ))
-                    } else {
-                        let mut subs = subs.clone();
-                        for (x_1, y_1) in args_1.iter().zip(args_2.iter()) {
-                            subs = unify(x_1, y_1, &subs)?;
-                        }
-                        Ok(subs)
+                    let mut subs = subs.clone();
+                    for (x_1, y_1) in args_1.iter().zip(args_2.iter()) {
+                        subs = unify(x_1, y_1, &subs)?;
                     }
+                    Ok(subs)
                 }
             }
             _ => Err(Error::FailedToUnify(format!("{:?}", x), format!("{:?}", y))),
@@ -50,11 +44,11 @@ pub fn unify<'a, 'src>(
     }
 }
 
-fn unify_variable<'a, 'src>(
-    v_name: &'src String,
-    v: &'src Term,
-    x: &'src Term,
-    subs: &'a Substitutions,
+fn unify_variable(
+    v_name: &str,
+    v: &Term,
+    x: &Term,
+    subs: &Substitutions,
 ) -> Result<Substitutions, Error> {
     if let Some(term) = subs.get(v_name) {
         return unify(term, x, subs);

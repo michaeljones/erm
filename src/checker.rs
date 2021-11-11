@@ -29,8 +29,8 @@ pub struct Context {
 }
 
 impl Context {
-    pub fn new() -> Context {
-        Context { next_unique_id: 1 }
+    pub fn new() -> Self {
+        Self { next_unique_id: 1 }
     }
 
     pub fn unique_var(&mut self) -> Term {
@@ -38,6 +38,12 @@ impl Context {
         self.next_unique_id += 1;
 
         Term::Var(format!("var-{}", id))
+    }
+}
+
+impl Default for Context {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -49,10 +55,10 @@ pub fn check(
     log::trace!("check");
 
     let main_name = ast::LowerName::simple("main".to_string());
-    let mut context = Context::new();
+    let mut context = Context::default();
 
     // let mut var_generator = VarGenerator::new();
-    match env::get_binding(&environment, &main_name) {
+    match env::get_binding(environment, &main_name) {
         Ok(FoundBinding::WithEnv(Binding::UserFunc(stmt_rc), _env)) => match &*stmt_rc {
             Stmt::Function { args, expr, .. } => {
                 let mut bindings = env::Bindings::new();
@@ -69,9 +75,9 @@ pub fn check(
                 }
 
                 let scope = env::Scope::from_bindings(bindings);
-                let environment = env::add_local_scope(&environment, scope);
+                let environment = env::add_local_scope(environment, scope);
 
-                let body_term = expression_to_term(&expr, &mut context, &environment)?;
+                let body_term = expression_to_term(expr, &mut context, &environment)?;
                 let main_term = Term::Function(
                     Box::new(Term::Type(
                         "List".to_string(),
@@ -112,17 +118,17 @@ fn expression_to_term(
         Expr::Bool(_) => Ok(Term::Constant(Value::Bool)),
         Expr::Integer(_) => Ok(Term::Constant(Value::Integer)),
         Expr::String(_) => Ok(Term::Constant(Value::String)),
-        Expr::Call { function, args } => call_to_term(function, args, context, &environment),
+        Expr::Call { function, args } => call_to_term(function, args, context, environment),
         Expr::BinOp {
             operator,
             left,
             right,
-        } => binary_expression_to_term(operator, left, right, context, &environment),
+        } => binary_expression_to_term(operator, left, right, context, environment),
         Expr::VarName(name) =>
         // Want to be able to fetch 'x' from the scope where 'x' is an typed or untyped
         // argument to the function that we might be in the scope of
         {
-            match env::get_binding(&environment, &name) {
+            match env::get_binding(environment, name) {
                 Ok(FoundBinding::BuiltInFunc(name)) => {
                     let built_in_func =
                         env::get_built_in(&name).ok_or(Error::UnknownFunction(name))?;
@@ -151,11 +157,11 @@ fn expression_to_term(
                         let scope = env::Scope::from_bindings(bindings);
                         // TODO: The called function should probably not have the scope of the callee but
                         // rather than scope of where it was parsed
-                        let environment = env::add_local_scope(&environment, scope);
+                        let environment = env::add_local_scope(environment, scope);
 
                         // TODO: Might infer substitutions from this work that we should return and make
                         // available
-                        let body_term = expression_to_term(&expr, context, &environment)?;
+                        let body_term = expression_to_term(expr, context, &environment)?;
 
                         let mut signature_term = body_term;
                         for arg in args.iter().rev() {
@@ -168,13 +174,13 @@ fn expression_to_term(
                     }
                     result => {
                         log::error!("{:#?}", result);
-                        Err(Error::UnknownVarName(name.to_string()))
+                        Err(Error::UnknownVarName(name.as_string()))
                     }
                 },
-                Ok(FoundBinding::WithEnv(Binding::UserArg(term), _env)) => Ok(term.clone()),
+                Ok(FoundBinding::WithEnv(Binding::UserArg(term), _env)) => Ok(term),
                 result => {
                     log::error!("{:#?}", result);
-                    Err(Error::UnknownVarName(name.to_string()))
+                    Err(Error::UnknownVarName(name.as_string()))
                 }
             }
         }
@@ -182,14 +188,8 @@ fn expression_to_term(
             condition,
             then_branch,
             else_branch,
-        } => if_expression_to_term(
-            &condition,
-            &then_branch,
-            &else_branch,
-            context,
-            &environment,
-        ),
-        Expr::List(expressions) => list_to_term(&expressions, context, &environment),
+        } => if_expression_to_term(condition, then_branch, else_branch, context, environment),
+        Expr::List(expressions) => list_to_term(expressions.to_vec(), context, environment),
         _ => Err(Error::UnhandledExpression(format!("{:?}", expr))),
     }
 }
@@ -202,7 +202,7 @@ fn binary_expression_to_term(
     environment: &env::Environment,
 ) -> Result<Term, Error> {
     log::trace!("binary_expression_to_term");
-    if let Some(operator) = env::get_operator(&environment, operator_name) {
+    if let Some(operator) = env::get_operator(environment, operator_name) {
         // TODO: Make sure we get the function that corresponds to the same scope as the operator
         // otherwise we might get another function
         match operator.binding {
@@ -227,12 +227,12 @@ fn binary_expression_to_term(
                 _ => Err(Error::UnknownFunction(operator.function_name)),
             },
             Binding::UserBinding(expr_rc) => {
-                let signature_term = expression_to_term(&expr_rc, context, &environment)?;
-                let left_term = expression_to_term(left, context, &environment)?;
-                let right_term = expression_to_term(right, context, &environment)?;
+                let signature_term = expression_to_term(&expr_rc, context, environment)?;
+                let left_term = expression_to_term(left, context, environment)?;
+                let right_term = expression_to_term(right, context, environment)?;
                 let arg_terms = [left_term, right_term];
                 // println!("About to resolve for {:#?}", expr_rc);
-                resolve_function_and_args(&signature_term, &arg_terms, &environment)
+                resolve_function_and_args(&signature_term, &arg_terms, environment)
             }
             _ => Err(Error::UnknownFunction(operator.function_name)),
         }
@@ -243,20 +243,20 @@ fn binary_expression_to_term(
 
 fn call_to_term(
     function: &Rc<Expr>,
-    call_args: &Vec<Rc<Expr>>,
+    call_args: &[Rc<Expr>],
     context: &mut Context,
     environment: &env::Environment,
 ) -> Result<Term, Error> {
     log::trace!("call_to_term");
-    let function_term = expression_to_term(function, context, &environment)?;
+    let function_term = expression_to_term(function, context, environment)?;
 
     let arg_terms = call_args
         .iter()
-        .map(|arg| expression_to_term(&arg, context, &environment))
+        .map(|arg| expression_to_term(arg, context, environment))
         .collect::<Result<Vec<Term>, Error>>()?;
 
     // println!("About to resolve for builtin {:?}", function_name);
-    resolve_function_and_args(&function_term, &arg_terms, &environment)
+    resolve_function_and_args(&function_term, &arg_terms, environment)
 }
 
 /* Takes a function signature expressed as terms and arguments expressed as terms and applies the
@@ -284,7 +284,7 @@ fn resolve_function_and_args(
             Some((first, rest)) => {
                 let subs = unify::Substitutions::new();
                 match unify::unify(first, &**from, &subs) {
-                    Ok(_subs) => resolve_function_and_args(to, rest, &environment),
+                    Ok(_subs) => resolve_function_and_args(to, rest, environment),
                     Err(err) => Err(Error::UnifyError(err)), // TODO: If they don't already match then we want to try to unify them - in
                                                              // particular to detect if one is more general than the other and that they can
                                                              // therefore be brought together by narrowing the more general one down and fixing
@@ -312,7 +312,7 @@ fn if_expression_to_term(
 ) -> Result<Term, Error> {
     log::trace!("if_expression_to_term");
     // Infer condition
-    let condition_term = expression_to_term(condition, context, &environment)?;
+    let condition_term = expression_to_term(condition, context, environment)?;
 
     // Unify condition
     let subs = unify::Substitutions::new();
@@ -320,10 +320,10 @@ fn if_expression_to_term(
         .map_err(Error::UnifyError)?;
 
     // Infer then_branch
-    let then_branch_term = expression_to_term(then_branch, context, &environment)?;
+    let then_branch_term = expression_to_term(then_branch, context, environment)?;
 
     // Infer else_branch
-    let else_branch_term = expression_to_term(else_branch, context, &environment)?;
+    let else_branch_term = expression_to_term(else_branch, context, environment)?;
 
     // TODO: Unify instead of equality check
     if then_branch_term == else_branch_term {
@@ -334,7 +334,7 @@ fn if_expression_to_term(
 }
 
 fn list_to_term(
-    expressions: &Vec<Rc<Expr>>,
+    expressions: Vec<Rc<Expr>>,
     context: &mut Context,
     environment: &env::Environment,
 ) -> Result<Term, Error> {

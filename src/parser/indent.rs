@@ -17,14 +17,14 @@ impl Indent {
     fn inherited(count: usize) -> Self {
         Indent {
             status: IndentStatus::Inherited,
-            count: count,
+            count,
         }
     }
 
     fn fresh(count: usize) -> Self {
         Indent {
             status: IndentStatus::Fresh,
-            count: count,
+            count,
         }
     }
 
@@ -89,8 +89,8 @@ impl IndentScope {
 
 /// For when we want to continue parsing the current expression if we find an indented line but if
 /// we move out to a shallower indent then we can see that and move to the next part of the parsing
-pub fn consume_to_indented<'b>(
-    iter: &mut TokenIter<'b>,
+pub fn consume_to_indented(
+    iter: &mut TokenIter,
     base: usize,
     start: usize,
 ) -> Result<IndentScope, Error> {
@@ -125,8 +125,8 @@ pub fn consume_to_indented<'b>(
 /// For when the code is only valid if we continue on the same line at an indent on the next line.
 /// For something like "if <expr> then". It isn't valid for <expr> to be at the same indent at the
 /// if-keyword.
-pub fn must_consume_to_indented<'b>(
-    iter: &mut TokenIter<'b>,
+pub fn must_consume_to_indented(
+    iter: &mut TokenIter,
     base: usize,
     start: usize,
 ) -> Result<usize, Error> {
@@ -159,8 +159,8 @@ pub fn must_consume_to_indented<'b>(
 
 /// For when the code can continue on the same line or a more indented one. This might be the
 /// closing parenthesis which can be at the same indent at the opening one or more indented.
-pub fn must_consume_to_at_least<'b>(
-    iter: &mut TokenIter<'b>,
+pub fn must_consume_to_at_least(
+    iter: &mut TokenIter,
     base: usize,
     start: usize,
 ) -> Result<usize, Error> {
@@ -193,8 +193,8 @@ pub fn must_consume_to_at_least<'b>(
 
 /// For when the code must be on the same line or at the expected indentation. eg. the 'if' and
 /// 'else' keywords in an if-statement should be at the same indentation (or on the same line.)
-pub fn must_consume_to_matching<'b>(
-    iter: &mut TokenIter<'b>,
+pub fn must_consume_to_matching(
+    iter: &mut TokenIter,
     base: usize,
     start: usize,
 ) -> Result<usize, Error> {

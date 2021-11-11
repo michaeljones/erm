@@ -44,7 +44,7 @@ impl ModuleImport {
             self.module_scope.get_binding(&target_name.without_module())
         } else if target_name.modules.is_empty() {
             // TODO: Check that target name is in exposing
-            self.module_scope.get_binding(&target_name)
+            self.module_scope.get_binding(target_name)
         } else {
             None
         }
@@ -183,7 +183,7 @@ impl ModuleScope {
                     .find_map(|(path, is_core)| {
                         std::fs::File::open(&path).ok().map(|f| (path, f, is_core))
                     })
-                    .ok_or(Error::UnableToFindModule(import.module_name.join(".")))?;
+                    .ok_or_else(|| Error::UnableToFindModule(import.module_name.join(".")))?;
 
                 let mut source = String::new();
                 file.read_to_string(&mut source)
@@ -238,7 +238,7 @@ impl ModuleScope {
                     associativity,
                     precedence,
                     function_name,
-                } => bindings.get(&function_name).map(|binding| {
+                } => bindings.get(function_name).map(|binding| {
                     (
                         operator_name.to_string(),
                         Operator {
@@ -302,7 +302,7 @@ pub fn get_binding(
     environment: &Environment,
     target_name: &ast::LowerName,
 ) -> Result<FoundBinding, GetBindingError> {
-    let full_name = target_name.to_string();
+    let full_name = target_name.as_string();
     log::trace!("get_binding: {:?}", full_name);
     match full_name.as_str() {
         // core/Basics
@@ -338,7 +338,7 @@ pub fn get_binding(
                 module_imports: module_import.module_scope.module_imports.clone(),
                 local_scopes: vector![module_import.module_scope.local_scope.clone()],
             };
-            return Ok(FoundBinding::WithEnv(value.clone(), env));
+            return Ok(FoundBinding::WithEnv(value, env));
         }
     }
 
@@ -346,7 +346,7 @@ pub fn get_binding(
 }
 
 pub fn get_built_in(target_name: &ast::LowerName) -> Option<Rc<dyn builtins::Func>> {
-    let full_name = target_name.to_string();
+    let full_name = target_name.as_string();
     match full_name.as_str() {
         // core/Basics
         "Elm.Kernel.Basics.add" => return Some(Rc::new(builtins::Add {})),
@@ -366,7 +366,7 @@ pub fn get_built_in(target_name: &ast::LowerName) -> Option<Rc<dyn builtins::Fun
     None
 }
 
-pub fn get_operator<'a, 'src>(environment: &Environment, target_name: &str) -> Option<Operator> {
+pub fn get_operator(environment: &Environment, target_name: &str) -> Option<Operator> {
     log::trace!("get_operator: {}", &target_name);
     for scope in &environment.local_scopes {
         if let Some(value) = scope.operators.get(target_name) {
@@ -376,7 +376,7 @@ pub fn get_operator<'a, 'src>(environment: &Environment, target_name: &str) -> O
 
     for module_import in &environment.module_imports {
         if let Some(value) = module_import.get_operator(target_name) {
-            return Some(value.clone());
+            return Some(value);
         }
     }
 

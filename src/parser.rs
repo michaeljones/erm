@@ -28,7 +28,7 @@ pub enum Error {
 
 pub type ParseResult = Result<Module, Error>;
 
-pub fn parse<'src>(mut iter: &mut TokenIter<'src>) -> ParseResult {
+pub fn parse(mut iter: &mut TokenIter) -> ParseResult {
     log::trace!("parse");
 
     // Uncomment to print out whole token stream
@@ -62,7 +62,7 @@ pub fn parse<'src>(mut iter: &mut TokenIter<'src>) -> ParseResult {
     }
 }
 
-fn parse_exposing<'a>(mut iter: &mut TokenIter<'a>) -> Result<Exposing, Error> {
+fn parse_exposing(mut iter: &mut TokenIter) -> Result<Exposing, Error> {
     matches(&iter.next(), Token::Exposing)?;
     matches_space(&iter.next())?;
     matches(&iter.next(), Token::OpenParen)?;
@@ -81,7 +81,7 @@ fn parse_exposing<'a>(mut iter: &mut TokenIter<'a>) -> Result<Exposing, Error> {
     Ok(exposing)
 }
 
-fn parse_exposing_details<'a>(iter: &mut TokenIter<'a>) -> Result<Vec<ExposingDetail>, Error> {
+fn parse_exposing_details(iter: &mut TokenIter) -> Result<Vec<ExposingDetail>, Error> {
     let mut details = vec![];
     loop {
         match iter.peek() {
@@ -110,7 +110,7 @@ fn parse_exposing_details<'a>(iter: &mut TokenIter<'a>) -> Result<Vec<ExposingDe
     Ok(details)
 }
 
-fn consume_til_line_start<'a>(mut iter: &mut TokenIter<'a>) {
+fn consume_til_line_start(mut iter: &mut TokenIter) {
     while let Some((token, _range)) = iter.peek() {
         match token {
             Token::NewLine => {
@@ -129,7 +129,7 @@ fn consume_spaces(iter: &mut TokenIter) {
 }
 
 // Imports
-fn parse_imports<'a>(mut iter: &mut TokenIter<'a>) -> Result<Vec<Import>, Error> {
+fn parse_imports(mut iter: &mut TokenIter) -> Result<Vec<Import>, Error> {
     let mut imports = vec![];
 
     loop {
@@ -160,7 +160,7 @@ fn parse_imports<'a>(mut iter: &mut TokenIter<'a>) -> Result<Vec<Import>, Error>
 }
 
 // Statements
-fn parse_statements<'a>(mut iter: &mut TokenIter<'a>) -> Result<Vec<Rc<Stmt>>, Error> {
+fn parse_statements(mut iter: &mut TokenIter) -> Result<Vec<Rc<Stmt>>, Error> {
     log::trace!("parse_statements: {:?}", iter.peek());
     let mut statements = vec![];
 
@@ -195,11 +195,7 @@ fn parse_statements<'a>(mut iter: &mut TokenIter<'a>) -> Result<Vec<Rc<Stmt>>, E
     Ok(statements)
 }
 
-fn parse_infix<'src>(
-    mut iter: &mut TokenIter<'src>,
-    _base: usize,
-    mut _current: usize,
-) -> Result<Stmt, Error> {
+fn parse_infix(mut iter: &mut TokenIter, _base: usize, mut _current: usize) -> Result<Stmt, Error> {
     log::trace!("parse_infix: {:?}", iter.peek());
     matches(&iter.next(), Token::Infix)?;
     consume_spaces(&mut iter);
@@ -224,11 +220,11 @@ fn parse_infix<'src>(
         operator_name: operator_name.to_string(),
         associativity,
         precedence,
-        function_name: function_name.clone(),
+        function_name,
     })
 }
 
-fn extract_precendence<'a>(stream_token: &Option<SrcToken<'a>>) -> Result<usize, Error> {
+fn extract_precendence(stream_token: &Option<SrcToken>) -> Result<usize, Error> {
     match stream_token {
         Some((Token::LiteralInteger(int), _range)) => {
             usize::try_from(*int).map_err(|_| Error::NegativePrecendence)
@@ -275,12 +271,12 @@ fn parse_function_or_binding(
 
     if args.is_empty() {
         Ok(Stmt::Binding {
-            name: name.to_string(),
+            name: name.as_string(),
             expr: Rc::new(expr),
         })
     } else {
         Ok(Stmt::Function {
-            name: name.to_string(),
+            name: name.as_string(),
             args,
             expr: Rc::new(expr),
         })
@@ -289,8 +285,8 @@ fn parse_function_or_binding(
 
 // Expressions
 //
-fn parse_expression<'a, 'b>(
-    mut iter: &mut TokenIter<'a>,
+fn parse_expression(
+    mut iter: &mut TokenIter,
     base: usize,
     current: usize,
 ) -> Result<(Expr, usize), Error> {
@@ -308,8 +304,8 @@ fn parse_expression<'a, 'b>(
 //   - https://eli.thegreenplace.net/2009/03/20/a-recursive-descent-parser-with-an-infix-expression-evaluator
 //   - http://www.engr.mun.ca/~theo/Misc/exp_parsing.htm
 //
-fn parse_binary_expression<'a, 'b>(
-    mut iter: &mut TokenIter<'a>,
+fn parse_binary_expression(
+    mut iter: &mut TokenIter,
     base: usize,
     current: usize,
 ) -> Result<(Expr, usize), Error> {
@@ -352,7 +348,7 @@ fn parse_binary_expression<'a, 'b>(
         }
     }
 
-    while operator_stack.len() > 0 {
+    while !operator_stack.is_empty() {
         let operator = operator_stack.pop().ok_or(Error::NoOperator)?;
         let right_hand_expr = operand_stack.pop().ok_or(Error::NoOperand)?;
         let left_hand_expr = operand_stack.pop().ok_or(Error::NoOperand)?;
@@ -376,7 +372,7 @@ fn process_stacks(
     mut operator_stack: &mut Vec<String>,
     mut operand_stack: &mut Vec<Expr>,
 ) -> Result<(), Error> {
-    if has_greater_precedence(operator, &operator_stack)? {
+    if has_greater_precedence(operator, operator_stack)? {
         operator_stack.push(operator.to_string());
     } else {
         let right_hand_expr = operand_stack.pop().ok_or(Error::NoOperand)?;
@@ -395,10 +391,7 @@ fn process_stacks(
     Ok(())
 }
 
-fn has_greater_precedence<'a>(
-    operator_a: &'a str,
-    operator_stack: &Vec<String>,
-) -> Result<bool, Error> {
+fn has_greater_precedence(operator_a: &str, operator_stack: &[String]) -> Result<bool, Error> {
     if operator_stack.is_empty() {
         Ok(true)
     } else {
@@ -417,7 +410,7 @@ fn has_greater_precedence<'a>(
 //   - http://faq.elm-community.org/operators.html
 //   - https://github.com/elm-lang/core/blob/master/src/Basics.elm#L72-L90
 //
-fn precedence<'a>(operator: &'a str) -> Result<usize, Error> {
+fn precedence(operator: &str) -> Result<usize, Error> {
     match operator {
         "*" | "/" => Ok(7),
         "+" | "-" => Ok(6),
@@ -430,8 +423,8 @@ fn precedence<'a>(operator: &'a str) -> Result<usize, Error> {
 /* Parse a single variable or expression that might appear as an argument in a call site. ie.
  * nothing with args unless it is wrapped in parens or anything containing syntax.
  */
-fn parse_singular_expression<'a>(
-    iter: &mut TokenIter<'a>,
+fn parse_singular_expression(
+    iter: &mut TokenIter,
     base: usize,
     current: usize,
 ) -> Result<(Expr, usize), Error> {
@@ -450,8 +443,8 @@ fn parse_singular_expression<'a>(
     }
 }
 
-fn parse_contained_expression<'a, 'b>(
-    iter: &mut TokenIter<'a>,
+fn parse_contained_expression(
+    iter: &mut TokenIter,
     base: usize,
     current: usize,
 ) -> Result<(Expr, usize), Error> {
@@ -547,8 +540,8 @@ fn parse_list_literal(
 /* A single value or a call site with some kind of single token or expression that we assume
  * resolves to a function if there are space separated arguments after it.
  */
-fn parse_var_or_call<'a>(
-    iter: &mut TokenIter<'a>,
+fn parse_var_or_call(
+    iter: &mut TokenIter,
     base: usize,
     mut current: usize,
 ) -> Result<(Expr, usize), Error> {
@@ -613,8 +606,8 @@ fn parse_var_or_call<'a>(
     }
 }
 
-fn parse_if_expression<'a>(
-    mut iter: &mut TokenIter<'a>,
+fn parse_if_expression(
+    mut iter: &mut TokenIter,
     base: usize,
     mut current: usize,
 ) -> Result<(Expr, usize), Error> {
@@ -670,7 +663,7 @@ fn matches<'a>(stream_token: &Option<SrcToken<'a>>, match_token: Token<'a>) -> R
     }
 }
 
-fn matches_space<'a>(stream_token: &Option<SrcToken<'a>>) -> Result<(), Error> {
+fn matches_space(stream_token: &Option<SrcToken>) -> Result<(), Error> {
     match stream_token {
         Some((Token::Space(_), _range)) => Ok(()),
         Some((token, range)) => {
@@ -685,10 +678,10 @@ fn matches_space<'a>(stream_token: &Option<SrcToken<'a>>) -> Result<(), Error> {
     }
 }
 
-fn extract_upper_name<'a>(stream_token: &Option<SrcToken<'a>>) -> Result<Vec<String>, Error> {
+fn extract_upper_name(stream_token: &Option<SrcToken>) -> Result<Vec<String>, Error> {
     match stream_token {
         Some((Token::UpperName(name), _range)) => {
-            Ok(name.split(".").map(|str| str.to_string()).collect())
+            Ok(name.split('.').map(|str| str.to_string()).collect())
         }
         Some((token, range)) => {
             log::error!("UnexpectedToken");
@@ -702,7 +695,7 @@ fn extract_upper_name<'a>(stream_token: &Option<SrcToken<'a>>) -> Result<Vec<Str
     }
 }
 
-fn extract_lower_name<'a>(stream_token: &Option<SrcToken<'a>>) -> Result<LowerName, Error> {
+fn extract_lower_name(stream_token: &Option<SrcToken>) -> Result<LowerName, Error> {
     match stream_token {
         Some((Token::LowerName(name), _range)) => Ok(LowerName::from(name.to_string())),
         Some((token, range)) => {
@@ -732,7 +725,7 @@ fn extract_operator<'a>(stream_token: &Option<SrcToken<'a>>) -> Result<&'a str, 
     }
 }
 
-fn extract_pattern_name<'a>(stream_token: &Option<SrcToken<'a>>) -> Result<Pattern, Error> {
+fn extract_pattern_name(stream_token: &Option<SrcToken>) -> Result<Pattern, Error> {
     match stream_token {
         Some((Token::LowerName(name), _range)) => Ok(Pattern::Name(name.to_string())),
         Some((token, range)) => {
@@ -747,7 +740,7 @@ fn extract_pattern_name<'a>(stream_token: &Option<SrcToken<'a>>) -> Result<Patte
     }
 }
 
-fn extract_associativity<'a>(stream_token: &Option<SrcToken<'a>>) -> Result<Associativity, Error> {
+fn extract_associativity(stream_token: &Option<SrcToken>) -> Result<Associativity, Error> {
     match stream_token {
         Some((Token::LowerName("left"), _range)) => Ok(Associativity::Left),
         Some((Token::LowerName("right"), _range)) => Ok(Associativity::Right),
