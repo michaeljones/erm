@@ -39,18 +39,36 @@ pub fn to_user_output(error: Error) -> String {
 {}"#,
                 pretty_print(source, range)
             ),
-            parser::Error::TokensRemaining(_) => format!("Error text not written ({})", line!()),
-            parser::Error::NoOperand => format!("Error text not written ({})", line!()),
-            parser::Error::NoOperator => format!("Error text not written ({})", line!()),
-            parser::Error::EmptyOperatorStack => format!("Error text not written ({})", line!()),
-            parser::Error::UnknownOperator(_) => format!("Error text not written ({})", line!()),
-            parser::Error::UnknownExposing(_) => format!("Error text not written ({})", line!()),
-            parser::Error::NegativePrecendence => format!("Error text not written ({})", line!()),
+            parser::Error::TokensRemaining(_) => {
+                format!("Error text not written ({}) {:?}", line!(), error)
+            }
+            parser::Error::NoOperand => format!("Error text not written ({}) {:?}", line!(), error),
+            parser::Error::NoOperator => {
+                format!("Error text not written ({}) {:?}", line!(), error)
+            }
+            parser::Error::EmptyOperatorStack => {
+                format!("Error text not written ({}) {:?}", line!(), error)
+            }
+            parser::Error::UnknownOperator(_) => {
+                format!("Error text not written ({}) {:?}", line!(), error)
+            }
+            parser::Error::UnknownExposing(_) => {
+                format!("Error text not written ({}) {:?}", line!(), error)
+            }
+            parser::Error::NegativePrecendence => {
+                format!("Error text not written ({}) {:?}", line!(), error)
+            }
+            parser::Error::Unknown => format!("Error text not written ({}) {:?}", line!(), error),
+            parser::Error::NameMismatch => {
+                format!("Error text not written ({}) {:?}", line!(), error)
+            }
         },
         Error::CheckError(error) => match error {
-            checker::Error::UnknownBinding(_) => format!("Error text not written ({})", line!()),
+            checker::Error::UnknownBinding(_) => {
+                format!("Error text not written ({}) {:?}", line!(), error)
+            }
             checker::Error::UnhandledExpression(_) => {
-                format!("Error text not written ({})", line!())
+                format!("Error text not written ({}) {:?}", line!(), error)
             }
             checker::Error::UnifyError(unify_error) => format!(
                 r#"Type error:

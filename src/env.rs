@@ -86,7 +86,7 @@ impl Scope {
 
 #[derive(Debug)]
 pub struct ModuleScope {
-    pub name: Vec<String>,
+    pub name: ast::ModuleName,
     pub module_imports: im::Vector<ModuleImport>,
     pub local_scope: Rc<Scope>,
     pub exposing: ast::Exposing,
@@ -211,7 +211,7 @@ impl ModuleScope {
             .statements
             .iter()
             .flat_map(|entry| match &**entry {
-                Stmt::Binding { name, expr } => Some((
+                Stmt::Binding { name, expr, .. } => Some((
                     ast::LowerName {
                         modules: Vec::new(),
                         access: vec![name.to_string()],

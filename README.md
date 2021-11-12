@@ -48,9 +48,12 @@ RUST_LOG=trace cargo test -- --nocapture
 ## Links
 
 ### Elm Resources
+
 - [Full syntax](https://github.com/pdamoc/elm-syntax-sscce/blob/main/src/Main.elm)
 - [Prelude](https://github.com/elm/compiler/blob/770071accf791e8171440709effe71e78a9ab37c/compiler/src/Elm/Compiler/Imports.hs#L20-L33)
 - [When to include prelude](https://github.com/elm/compiler/blob/770071accf791e8171440709effe71e78a9ab37c/compiler/src/Parse/Module.hs#L80)
+- [Elm-in-Elm AST](https://github.com/elm-in-elm/compiler/blob/master/src/Elm/AST/Canonical.elm)
+- [Elm-in-Elm Type Structure](https://github.com/elm-in-elm/compiler/blob/master/src/Elm/Data/Type.elm)
 
 ### Type Inference
 
@@ -67,5 +70,3 @@ RUST_LOG=trace cargo test -- --nocapture
 
 - https://eli.thegreenplace.net/2009/03/20/a-recursive-descent-parser-with-an-infix-expression-evaluator
 - http://www.engr.mun.ca/~theo/Misc/exp_parsing.htm
-
-

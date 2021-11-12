@@ -24,6 +24,8 @@ pub enum Error {
     UnknownOperator(String),
     UnknownExposing(String),
     NegativePrecendence,
+    NameMismatch,
+    Unknown,
 }
 
 pub type ParseResult = Result<Module, Error>;
@@ -36,7 +38,7 @@ pub fn parse(mut iter: &mut TokenIter) -> ParseResult {
 
     matches(&iter.next(), Token::Module)?;
     matches_space(&iter.next())?;
-    let name = extract_upper_name(&iter.next())?;
+    let name = extract_module_name(&iter.next())?;
     log::trace!("module {:?}", name);
     matches_space(&iter.next())?;
     let exposing = parse_exposing(&mut iter)?;
@@ -129,7 +131,7 @@ fn consume_spaces(iter: &mut TokenIter) {
 }
 
 // Imports
-fn parse_imports(mut iter: &mut TokenIter) -> Result<Vec<Import>, Error> {
+fn parse_imports(iter: &mut TokenIter) -> Result<Vec<Import>, Error> {
     let mut imports = vec![];
 
     loop {
@@ -139,13 +141,13 @@ fn parse_imports(mut iter: &mut TokenIter) -> Result<Vec<Import>, Error> {
 
         matches(&iter.next(), Token::Import)?;
         matches_space(&iter.next())?;
-        let module_name = extract_upper_name(&iter.next())?;
+        let module_name = extract_module_name(&iter.next())?;
 
         let mut exposing = None;
 
-        consume_spaces(&mut iter);
+        consume_spaces(iter);
         if matches!(iter.peek(), Some((Token::Exposing, _range))) {
-            exposing = Some(parse_exposing(&mut iter)?);
+            exposing = Some(parse_exposing(iter)?);
         }
 
         imports.push(Import {
@@ -153,28 +155,53 @@ fn parse_imports(mut iter: &mut TokenIter) -> Result<Vec<Import>, Error> {
             exposing,
         });
 
-        consume_til_line_start(&mut iter);
+        consume_til_line_start(iter);
     }
 
     Ok(imports)
 }
 
 // Statements
-fn parse_statements(mut iter: &mut TokenIter) -> Result<Vec<Rc<Stmt>>, Error> {
+fn parse_statements(iter: &mut TokenIter) -> Result<Vec<Rc<Stmt>>, Error> {
     log::trace!("parse_statements: {:?}", iter.peek());
     let mut statements = vec![];
 
     let base = 0;
-    let current = 0;
+    let mut current = 0;
 
     loop {
         match iter.peek() {
             Some((Token::LowerName(_), _range)) => {
-                let statement = parse_function_or_binding(&mut iter, base, current)?;
+                // Get the name
+                let name = extract_lower_name(&iter.next())?;
+                consume_spaces(iter);
+
+                let statement = if matches!(iter.peek(), Some((Token::Colon, _range))) {
+                    let type_annotation = parse_type_annotation(iter, base, current, name.clone())?;
+                    current = indent::must_consume_to_matching(iter, base, current)?;
+
+                    let function_name = extract_lower_name(&iter.next())?;
+                    consume_spaces(iter);
+
+                    if function_name != name {
+                        return Err(Error::NameMismatch);
+                    }
+
+                    parse_function_or_binding(
+                        iter,
+                        base,
+                        current,
+                        function_name,
+                        Some(type_annotation),
+                    )?
+                } else {
+                    parse_function_or_binding(iter, base, current, name, None)?
+                };
+
                 statements.push(Rc::new(statement));
             }
             Some((Token::Infix, _range)) => {
-                let statement = parse_infix(&mut iter, base, current)?;
+                let statement = parse_infix(iter, base, current)?;
                 statements.push(Rc::new(statement));
             }
             Some((token, range)) => {
@@ -189,30 +216,31 @@ fn parse_statements(mut iter: &mut TokenIter) -> Result<Vec<Rc<Stmt>>, Error> {
         }
 
         // TODO: Update/fix/change
-        indent::must_consume_to_matching(&mut iter, base, current)?;
+        indent::must_consume_to_matching(iter, base, current)?;
     }
 
     Ok(statements)
 }
 
-fn parse_infix(mut iter: &mut TokenIter, _base: usize, mut _current: usize) -> Result<Stmt, Error> {
+// Infix operators
+fn parse_infix(iter: &mut TokenIter, _base: usize, mut _current: usize) -> Result<Stmt, Error> {
     log::trace!("parse_infix: {:?}", iter.peek());
     matches(&iter.next(), Token::Infix)?;
-    consume_spaces(&mut iter);
+    consume_spaces(iter);
 
     let associativity = extract_associativity(&iter.next())?;
-    consume_spaces(&mut iter);
+    consume_spaces(iter);
 
     let precedence = extract_precendence(&iter.next())?;
-    consume_spaces(&mut iter);
+    consume_spaces(iter);
 
     matches(&iter.next(), Token::OpenParen)?;
     let operator_name = extract_operator(&iter.next())?;
     matches(&iter.next(), Token::CloseParen)?;
-    consume_spaces(&mut iter);
+    consume_spaces(iter);
 
     matches(&iter.next(), Token::Equals)?;
-    consume_spaces(&mut iter);
+    consume_spaces(iter);
 
     let function_name = extract_lower_name(&iter.next())?;
 
@@ -241,15 +269,123 @@ fn extract_precendence(stream_token: &Option<SrcToken>) -> Result<usize, Error> 
     }
 }
 
+// Type annotations
+fn parse_type_annotation(
+    iter: &mut TokenIter,
+    base: usize,
+    current: usize,
+    name: LowerName,
+) -> Result<TypeAnnotation, Error> {
+    log::trace!("parse_type_annotation: {:?}", name);
+    matches(&iter.next(), Token::Colon)?;
+    consume_spaces(iter);
+
+    let type_ = parse_type(iter, base, current)?;
+    consume_spaces(iter);
+
+    Ok(TypeAnnotation {
+        // TODO: Don't use lower name for this stuff
+        name: name.as_string(),
+        type_,
+    })
+}
+
+fn parse_type(iter: &mut TokenIter, base: usize, current: usize) -> Result<Type, Error> {
+    log::trace!("parse_type: {:?}", iter.peek());
+    match iter.peek() {
+        Some((Token::UpperName(_), _range)) => {
+            let mut type_ = parse_single_type(iter, base, current)?;
+            consume_spaces(iter);
+
+            loop {
+                if !matches!(iter.peek(), Some((Token::RightArrow, _range))) {
+                    break;
+                }
+                matches(&iter.next(), Token::RightArrow)?;
+                consume_spaces(iter);
+
+                let next_type = parse_single_type(iter, base, current)?;
+                consume_spaces(iter);
+                type_ = Type::Function {
+                    from: Box::new(type_),
+                    to: Box::new(next_type),
+                }
+            }
+
+            Ok(type_)
+        }
+        _ => Err(Error::Unknown),
+    }
+}
+
+// Parse up to the next "->" (RightArrow)
+fn parse_single_type(iter: &mut TokenIter, base: usize, current: usize) -> Result<Type, Error> {
+    log::trace!("parse_single_type: {:?}", iter.peek());
+    let name = extract_upper_name(&iter.next())?;
+    let indent = indent::consume_to_indented(iter, base, current)?;
+    if indent.in_scope() {
+        // current = indent.extract();
+    } else {
+        return convert_name_to_type(name, vec![]);
+    }
+
+    let mut args = vec![];
+    loop {
+        if matches!(iter.peek(), Some((Token::RightArrow, _range))) {
+            break;
+        }
+
+        let arg_name = extract_upper_name(&iter.next())?;
+        let arg_type = convert_name_to_type(arg_name, vec![])?;
+        consume_spaces(iter);
+
+        args.push(arg_type);
+    }
+
+    convert_name_to_type(name, args)
+}
+
+fn convert_name_to_type(name: UpperName, mut args: Vec<Type>) -> Result<Type, Error> {
+    log::trace!("convert_name_to_type: {:?} {:?}", name, args);
+    let full_name = name.as_string();
+    match full_name.as_str() {
+        "Int" => Ok(Type::Int),
+        "Float" => Ok(Type::Float),
+        "Char" => Ok(Type::Char),
+        "String" => Ok(Type::String),
+        "List" => {
+            if args.len() == 1 {
+                args.pop()
+                    .map(|arg| Type::List(Box::new(arg)))
+                    .ok_or_else(|| {
+                        log::error!(
+                            "Failed to pop from array with one entry: {:?} {:?}",
+                            name,
+                            args
+                        );
+                        Error::Unknown
+                    })
+            } else {
+                log::error!("List with too many or too few args: {:?} {:?}", name, args);
+                Err(Error::Unknown)
+            }
+        }
+        _ => {
+            log::error!("Unknown type name: {:?}", full_name);
+            Err(Error::Unknown)
+        }
+    }
+}
+
+// Functions & bindings
 fn parse_function_or_binding(
     iter: &mut TokenIter,
     base: usize,
     mut current: usize,
+    name: LowerName,
+    type_annotation: Option<TypeAnnotation>,
 ) -> Result<Stmt, Error> {
-    log::trace!("parse_function_or_binding: {:?}", iter.peek());
-    let name = extract_lower_name(&iter.next())?;
-    consume_spaces(iter);
-
+    log::trace!("parse_function_or_binding: {:?}", name);
     let mut args = Vec::new();
     loop {
         if !matches!(iter.peek(), Some((Token::LowerName(_), _range))) {
@@ -271,11 +407,13 @@ fn parse_function_or_binding(
 
     if args.is_empty() {
         Ok(Stmt::Binding {
+            type_annotation,
             name: name.as_string(),
             expr: Rc::new(expr),
         })
     } else {
         Ok(Stmt::Function {
+            type_annotation,
             name: name.as_string(),
             args,
             expr: Rc::new(expr),
@@ -678,7 +816,8 @@ fn matches_space(stream_token: &Option<SrcToken>) -> Result<(), Error> {
     }
 }
 
-fn extract_upper_name(stream_token: &Option<SrcToken>) -> Result<Vec<String>, Error> {
+fn extract_module_name(stream_token: &Option<SrcToken>) -> Result<ModuleName, Error> {
+    log::trace!("extract_module_name: {:?}", stream_token);
     match stream_token {
         Some((Token::UpperName(name), _range)) => {
             Ok(name.split('.').map(|str| str.to_string()).collect())
@@ -695,7 +834,27 @@ fn extract_upper_name(stream_token: &Option<SrcToken>) -> Result<Vec<String>, Er
     }
 }
 
+fn extract_upper_name(stream_token: &Option<SrcToken>) -> Result<UpperName, Error> {
+    log::trace!("extract_upper_name: {:?}", stream_token);
+    match stream_token {
+        Some((Token::UpperName(name), _range)) => UpperName::from(name).ok_or_else(|| {
+            log::error!("Unable to create upper name");
+            Error::Unknown
+        }),
+        Some((token, range)) => {
+            log::error!("UnexpectedToken");
+            Err(Error::UnexpectedToken {
+                found: token.to_string(),
+                expected: Token::UpperName("").to_string(),
+                range: range.clone(),
+            })
+        }
+        None => Err(Error::UnexpectedEnd),
+    }
+}
+
 fn extract_lower_name(stream_token: &Option<SrcToken>) -> Result<LowerName, Error> {
+    log::trace!("extract_lower_name: {:?}", stream_token);
     match stream_token {
         Some((Token::LowerName(name), _range)) => Ok(LowerName::from(name.to_string())),
         Some((token, range)) => {
@@ -711,6 +870,7 @@ fn extract_lower_name(stream_token: &Option<SrcToken>) -> Result<LowerName, Erro
 }
 
 fn extract_operator<'a>(stream_token: &Option<SrcToken<'a>>) -> Result<&'a str, Error> {
+    log::trace!("extract_operator: {:?}", stream_token);
     match stream_token {
         Some((Token::Operator(op), _range)) => Ok(op),
         Some((token, range)) => {
@@ -726,6 +886,7 @@ fn extract_operator<'a>(stream_token: &Option<SrcToken<'a>>) -> Result<&'a str, 
 }
 
 fn extract_pattern_name(stream_token: &Option<SrcToken>) -> Result<Pattern, Error> {
+    log::trace!("extract_pattern_name: {:?}", stream_token);
     match stream_token {
         Some((Token::LowerName(name), _range)) => Ok(Pattern::Name(name.to_string())),
         Some((token, range)) => {
@@ -741,6 +902,7 @@ fn extract_pattern_name(stream_token: &Option<SrcToken>) -> Result<Pattern, Erro
 }
 
 fn extract_associativity(stream_token: &Option<SrcToken>) -> Result<Associativity, Error> {
+    log::trace!("extract_associativity: {:?}", stream_token);
     match stream_token {
         Some((Token::LowerName("left"), _range)) => Ok(Associativity::Left),
         Some((Token::LowerName("right"), _range)) => Ok(Associativity::Right),

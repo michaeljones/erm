@@ -2,9 +2,11 @@ use std::rc::Rc;
 
 use super::checker::term;
 
+pub type ModuleName = Vec<String>;
+
 #[derive(Debug)]
 pub struct Module {
-    pub name: Vec<String>,
+    pub name: ModuleName,
     pub exposing: Exposing,
     pub imports: Vec<Import>,
     pub statements: Vec<Rc<Stmt>>,
@@ -72,21 +74,21 @@ pub struct LowerName {
 }
 
 impl LowerName {
-    pub fn simple(name: String) -> LowerName {
-        LowerName {
+    pub fn simple(name: String) -> Self {
+        Self {
             modules: Vec::new(),
             access: vec![name],
         }
     }
 
-    pub fn from(name: String) -> LowerName {
+    pub fn from(name: String) -> Self {
         let segments = name.split('.');
         let (modules, access) = segments
             .into_iter()
             .map(|str| str.to_string())
             .partition(|name| name.starts_with(|ch| ('A'..='Z').contains(&ch)));
 
-        LowerName { modules, access }
+        Self { modules, access }
     }
 
     pub fn as_string(&self) -> String {
@@ -98,8 +100,54 @@ impl LowerName {
             .join(".")
     }
 
-    pub fn without_module(&self) -> LowerName {
-        LowerName {
+    pub fn without_module(&self) -> Self {
+        Self {
+            modules: vec![],
+            access: self.access.clone(),
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Hash, Clone)]
+pub struct UpperName {
+    pub modules: Vec<String>,
+    pub access: String,
+}
+
+impl UpperName {
+    pub fn from(name: &str) -> Option<Self> {
+        let mut segments: Vec<String> = name
+            .split('.')
+            .into_iter()
+            .map(|str| str.to_string())
+            .collect();
+
+        let last = segments.pop();
+
+        last.map(|access| Self {
+            modules: segments,
+            access,
+        })
+    }
+
+    pub fn as_string(&self) -> String {
+        let mut string = self
+            .modules
+            .iter()
+            .cloned()
+            .collect::<Vec<String>>()
+            .join(".");
+
+        if string.is_empty() {
+            self.access.clone()
+        } else {
+            string.push_str(&format!(".{}", self.access));
+            string
+        }
+    }
+
+    pub fn without_module(&self) -> Self {
+        Self {
             modules: vec![],
             access: self.access.clone(),
         }
@@ -109,10 +157,12 @@ impl LowerName {
 #[derive(Debug)]
 pub enum Stmt {
     Binding {
+        type_annotation: Option<TypeAnnotation>,
         name: String,
         expr: Rc<Expr>,
     },
     Function {
+        type_annotation: Option<TypeAnnotation>,
         name: String,
         args: Vec<Pattern>,
         expr: Rc<Expr>,
@@ -123,6 +173,26 @@ pub enum Stmt {
         precedence: usize,
         function_name: LowerName,
     },
+}
+
+#[derive(Debug)]
+pub struct TypeAnnotation {
+    pub name: String,
+    pub type_: Type,
+}
+
+// Based on: https://github.com/elm-in-elm/compiler/blob/master/src/Elm/Data/Type.elm
+#[derive(Debug)]
+pub enum Type {
+    Var(String),
+    Bool,
+    Int,
+    Float,
+    Char,
+    String,
+    Unit,
+    List(Box<Type>),
+    Function { from: Box<Type>, to: Box<Type> },
 }
 
 #[derive(Clone, Debug)]
