@@ -22,4 +22,21 @@ mod types {
         let result = eval(src, None);
         insta::assert_snapshot!(result);
     }
+
+    #[test]
+    fn other_type_annotation() {
+        let src = r#"
+        module Main exposing (..)
+
+        add1 : Int -> Int
+        add1 x =
+          x + 1
+
+        main : List String -> String
+        main args =
+          String.fromInt (add1 3)
+        "#;
+        let result = eval(src, None);
+        insta::assert_snapshot!(result);
+    }
 }
