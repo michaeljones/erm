@@ -124,9 +124,17 @@ fn consume_til_line_start(mut iter: &mut TokenIter) {
     }
 }
 
+// Consumes space and comments
 fn consume_spaces(iter: &mut TokenIter) {
-    while matches!(iter.peek(), Some((Token::Space(_), _range))) {
-        iter.next();
+    loop {
+        match iter.peek() {
+            Some((Token::Space(_), _range)) | Some((Token::SingleLineComment(_), _range)) => {
+                iter.next();
+            }
+            _ => {
+                break;
+            }
+        }
     }
 }
 

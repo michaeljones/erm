@@ -1,0 +1,6 @@
+---
+source: tests/comments.rs
+expression: result
+
+---
+Hello comments
