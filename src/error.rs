@@ -115,7 +115,9 @@ pub fn to_user_output(error: Error) -> String {
                 module
             ),
             env::Error::FailedToRead(_) => format!("Error text not written ({})", line!()),
-            env::Error::FailedToParse(_, _) => format!("Error text not written ({})", line!()),
+            env::Error::FailedToParse(_, _) => {
+                format!("Error text not written ({}) {:?}", line!(), error)
+            }
         },
     }
 }

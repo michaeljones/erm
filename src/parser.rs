@@ -628,6 +628,11 @@ fn parse_contained_expression(
             iter.next();
             result
         }
+        Some((Token::LowerPath(name), _range)) => {
+            let result = Ok((Expr::VarName(LowerName::from(name.to_string())), current));
+            iter.next();
+            result
+        }
         Some((Token::OpenBracket, _range)) => parse_list_literal(iter, base, current),
         Some((token, range)) => {
             log::error!("UnexpectedToken");
@@ -830,6 +835,9 @@ fn extract_module_name(stream_token: &Option<SrcToken>) -> Result<ModuleName, Er
     log::trace!("extract_module_name: {:?}", stream_token);
     match stream_token {
         Some((Token::UpperName(name), _range)) => {
+            Ok(name.split('.').map(|str| str.to_string()).collect())
+        }
+        Some((Token::UpperPath(name), _range)) => {
             Ok(name.split('.').map(|str| str.to_string()).collect())
         }
         Some((token, range)) => {
