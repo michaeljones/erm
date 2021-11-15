@@ -628,7 +628,7 @@ fn parse_contained_expression(
             iter.next();
             result
         }
-        Some((Token::LowerPath(name), _range)) => {
+        Some((Token::QualifiedLowerName(name), _range)) => {
             let result = Ok((Expr::VarName(LowerName::from(name.to_string())), current));
             iter.next();
             result
@@ -837,7 +837,7 @@ fn extract_module_name(stream_token: &Option<SrcToken>) -> Result<ModuleName, Er
         Some((Token::UpperName(name), _range)) => {
             Ok(name.split('.').map(|str| str.to_string()).collect())
         }
-        Some((Token::UpperPath(name), _range)) => {
+        Some((Token::QualifiedUpperName(name), _range)) => {
             Ok(name.split('.').map(|str| str.to_string()).collect())
         }
         Some((token, range)) => {
