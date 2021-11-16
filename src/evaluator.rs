@@ -33,7 +33,7 @@ pub fn evaluate(
     log::trace!("evaluate");
 
     let call_main = Expr::Call {
-        function: Rc::new(ast::Expr::VarName(ast::LowerName::simple(
+        function: Rc::new(ast::Expr::VarName(ast::QualifiedLowerName::simple(
             "main".to_string(),
         ))),
         args: vec![Rc::new(Expr::List(
@@ -153,7 +153,7 @@ fn evaluate_function_call(
                                 .zip(values.iter().chain(arg_expr_values.iter()))
                                 .map(|(Pattern::Name(name), value)| {
                                     (
-                                        ast::LowerName::simple(name.to_string()),
+                                        ast::QualifiedLowerName::simple(name.to_string()),
                                         Binding::Value(value.clone()),
                                     )
                                 })

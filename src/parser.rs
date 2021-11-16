@@ -43,6 +43,9 @@ pub fn parse(mut iter: &mut TokenIter) -> ParseResult {
     matches_space(&iter.next())?;
     let exposing = parse_exposing(&mut iter)?;
 
+    // Uncomment to print out whole token stream
+    // println!("{:?}", iter.collect::<Vec<_>>());
+    //
     consume_til_line_start(&mut iter);
 
     let imports = parse_imports(&mut iter)?;
@@ -252,7 +255,7 @@ fn parse_infix(iter: &mut TokenIter, _base: usize, mut _current: usize) -> Resul
     matches(&iter.next(), Token::Equals)?;
     consume_spaces(iter);
 
-    let function_name = extract_lower_name(&iter.next())?;
+    let function_name = extract_qualified_lower_name(&iter.next())?;
 
     Ok(Stmt::Infix {
         operator_name: operator_name.to_string(),
@@ -295,7 +298,7 @@ fn parse_type_annotation(
 
     Ok(TypeAnnotation {
         // TODO: Don't use lower name for this stuff
-        name: name.as_string(),
+        name,
         type_,
     })
 }
@@ -331,7 +334,7 @@ fn parse_type(iter: &mut TokenIter, base: usize, current: usize) -> Result<Type,
 // Parse up to the next "->" (RightArrow)
 fn parse_single_type(iter: &mut TokenIter, base: usize, current: usize) -> Result<Type, Error> {
     log::trace!("parse_single_type: {:?}", iter.peek());
-    let name = extract_upper_name(&iter.next())?;
+    let name = extract_qualified_upper_name(&iter.next())?;
     let indent = indent::consume_to_indented(iter, base, current)?;
     if indent.in_scope() {
         // current = indent.extract();
@@ -345,7 +348,7 @@ fn parse_single_type(iter: &mut TokenIter, base: usize, current: usize) -> Resul
             break;
         }
 
-        let arg_name = extract_upper_name(&iter.next())?;
+        let arg_name = extract_qualified_upper_name(&iter.next())?;
         let arg_type = convert_name_to_type(arg_name, vec![])?;
         consume_spaces(iter);
 
@@ -355,7 +358,7 @@ fn parse_single_type(iter: &mut TokenIter, base: usize, current: usize) -> Resul
     convert_name_to_type(name, args)
 }
 
-fn convert_name_to_type(name: UpperName, mut args: Vec<Type>) -> Result<Type, Error> {
+fn convert_name_to_type(name: QualifiedUpperName, mut args: Vec<Type>) -> Result<Type, Error> {
     log::trace!("convert_name_to_type: {:?} {:?}", name, args);
     let full_name = name.as_string();
     match full_name.as_str() {
@@ -418,13 +421,13 @@ fn parse_function_or_binding(
     if args.is_empty() {
         Ok(Stmt::Binding {
             type_annotation,
-            name: name.as_string(),
+            name,
             expr: Rc::new(expr),
         })
     } else {
         Ok(Stmt::Function {
             type_annotation,
-            name: name.as_string(),
+            name,
             args,
             expr: Rc::new(expr),
         })
@@ -624,12 +627,18 @@ fn parse_contained_expression(
             result
         }
         Some((Token::LowerName(name), _range)) => {
-            let result = Ok((Expr::VarName(LowerName::from(name.to_string())), current));
+            let result = Ok((
+                Expr::VarName(QualifiedLowerName::from(name.to_string())),
+                current,
+            ));
             iter.next();
             result
         }
-        Some((Token::QualifiedLowerName(name), _range)) => {
-            let result = Ok((Expr::VarName(LowerName::from(name.to_string())), current));
+        Some((Token::LowerPath(name), _range)) => {
+            let result = Ok((
+                Expr::VarName(QualifiedLowerName::from(name.to_string())),
+                current,
+            ));
             iter.next();
             result
         }
@@ -834,10 +843,10 @@ fn matches_space(stream_token: &Option<SrcToken>) -> Result<(), Error> {
 fn extract_module_name(stream_token: &Option<SrcToken>) -> Result<ModuleName, Error> {
     log::trace!("extract_module_name: {:?}", stream_token);
     match stream_token {
-        Some((Token::UpperName(name), _range)) => {
+        Some((Token::UpperPath(name), _range)) => {
             Ok(name.split('.').map(|str| str.to_string()).collect())
         }
-        Some((Token::QualifiedUpperName(name), _range)) => {
+        Some((Token::UpperName(name), _range)) => {
             Ok(name.split('.').map(|str| str.to_string()).collect())
         }
         Some((token, range)) => {
@@ -852,10 +861,16 @@ fn extract_module_name(stream_token: &Option<SrcToken>) -> Result<ModuleName, Er
     }
 }
 
-fn extract_upper_name(stream_token: &Option<SrcToken>) -> Result<UpperName, Error> {
-    log::trace!("extract_upper_name: {:?}", stream_token);
+fn extract_qualified_upper_name(
+    stream_token: &Option<SrcToken>,
+) -> Result<QualifiedUpperName, Error> {
+    log::trace!("extract_qualified_upper_name: {:?}", stream_token);
     match stream_token {
-        Some((Token::UpperName(name), _range)) => UpperName::from(name).ok_or_else(|| {
+        Some((Token::UpperPath(name), _range)) => QualifiedUpperName::from(name).ok_or_else(|| {
+            log::error!("Unable to create upper name");
+            Error::Unknown
+        }),
+        Some((Token::UpperName(name), _range)) => QualifiedUpperName::from(name).ok_or_else(|| {
             log::error!("Unable to create upper name");
             Error::Unknown
         }),
@@ -871,10 +886,44 @@ fn extract_upper_name(stream_token: &Option<SrcToken>) -> Result<UpperName, Erro
     }
 }
 
+fn extract_upper_name(stream_token: &Option<SrcToken>) -> Result<UpperName, Error> {
+    log::trace!("extract_upper_name: {:?}", stream_token);
+    match stream_token {
+        Some((Token::UpperName(name), _range)) => Ok(UpperName(name.to_string())),
+        Some((token, range)) => {
+            log::error!("UnexpectedToken");
+            Err(Error::UnexpectedToken {
+                found: token.to_string(),
+                expected: Token::UpperName("").to_string(),
+                range: range.clone(),
+            })
+        }
+        None => Err(Error::UnexpectedEnd),
+    }
+}
+
+fn extract_qualified_lower_name(
+    stream_token: &Option<SrcToken>,
+) -> Result<QualifiedLowerName, Error> {
+    log::trace!("extract_qualified_lower_name: {:?}", stream_token);
+    match stream_token {
+        Some((Token::LowerName(name), _range)) => Ok(QualifiedLowerName::from(name.to_string())),
+        Some((token, range)) => {
+            log::error!("UnexpectedToken");
+            Err(Error::UnexpectedToken {
+                found: token.to_string(),
+                expected: Token::LowerName("").to_string(),
+                range: range.clone(),
+            })
+        }
+        None => Err(Error::UnexpectedEnd),
+    }
+}
+
 fn extract_lower_name(stream_token: &Option<SrcToken>) -> Result<LowerName, Error> {
     log::trace!("extract_lower_name: {:?}", stream_token);
     match stream_token {
-        Some((Token::LowerName(name), _range)) => Ok(LowerName::from(name.to_string())),
+        Some((Token::LowerName(name), _range)) => Ok(LowerName(name.to_string())),
         Some((token, range)) => {
             log::error!("UnexpectedToken");
             Err(Error::UnexpectedToken {

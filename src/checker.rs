@@ -14,7 +14,7 @@ pub enum Error {
     UnknownBinding(String),
     UnhandledExpression(String),
     UnifyError(unify::Error),
-    UnknownFunction(ast::LowerName),
+    UnknownFunction(ast::QualifiedLowerName),
     UnknownOperator(String),
     UnknownVarName(String),
     ArgumentMismatch(u32),
@@ -54,7 +54,7 @@ pub fn check(
 ) -> Result<(), Error> {
     log::trace!("check");
 
-    let main_name = ast::LowerName::simple("main".to_string());
+    let main_name = ast::QualifiedLowerName::simple("main".to_string());
     let mut context = Context::default();
 
     // let mut var_generator = VarGenerator::new();
@@ -65,7 +65,7 @@ pub fn check(
                 for arg in args {
                     for name in arg.names() {
                         bindings.insert(
-                            ast::LowerName {
+                            ast::QualifiedLowerName {
                                 modules: Vec::new(),
                                 access: vec![name.clone()],
                             },
@@ -146,7 +146,7 @@ fn expression_to_term(
                         for arg in args {
                             for name in arg.names() {
                                 bindings.insert(
-                                    ast::LowerName {
+                                    ast::QualifiedLowerName {
                                         modules: Vec::new(),
                                         access: vec![name.clone()],
                                     },

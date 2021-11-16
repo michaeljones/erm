@@ -92,18 +92,18 @@ pub enum Token<'src> {
 
     // Names
     //
-    // Any number of capitalised names separated by dots
+    // Two or more capitalised names separated by dots
     #[regex("([A-Z][a-zA-Z0-9_]*\\.)+[A-Z][a-zA-Z0-9_]*")]
-    QualifiedUpperName(&'src str),
+    UpperPath(&'src str),
 
     // A single capitalised name, no dots
     #[regex("[A-Z][a-zA-Z0-9_]*")]
     UpperName(&'src str),
 
-    // Any number of capitalised names, followed by at least one lower-case-starting name all
+    // One or more capitalised names, followed by at least one lower-case-starting name all
     // separated by dots
     #[regex("([A-Z][a-zA-Z0-9_]*\\.)+([a-z_][a-zA-Z0-9_]*\\.)*[a-z_][a-zA-Z0-9_]*")]
-    QualifiedLowerName(&'src str),
+    LowerPath(&'src str),
 
     // A single lower-case-starting name, no dots
     #[regex("[a-z_][a-zA-Z0-9_]*")]

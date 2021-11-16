@@ -67,13 +67,19 @@ pub enum ExposingDetail {
     Name(String),
 }
 
+#[derive(Debug, PartialEq, Clone)]
+pub struct UpperName(pub String);
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct LowerName(pub String);
+
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
-pub struct LowerName {
+pub struct QualifiedLowerName {
     pub modules: Vec<String>,
     pub access: Vec<String>,
 }
 
-impl LowerName {
+impl QualifiedLowerName {
     pub fn simple(name: String) -> Self {
         Self {
             modules: Vec::new(),
@@ -109,12 +115,12 @@ impl LowerName {
 }
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
-pub struct UpperName {
+pub struct QualifiedUpperName {
     pub modules: Vec<String>,
     pub access: String,
 }
 
-impl UpperName {
+impl QualifiedUpperName {
     pub fn from(name: &str) -> Option<Self> {
         let mut segments: Vec<String> = name
             .split('.')
@@ -158,12 +164,12 @@ impl UpperName {
 pub enum Stmt {
     Binding {
         type_annotation: Option<TypeAnnotation>,
-        name: String,
+        name: LowerName,
         expr: Rc<Expr>,
     },
     Function {
         type_annotation: Option<TypeAnnotation>,
-        name: String,
+        name: LowerName,
         args: Vec<Pattern>,
         expr: Rc<Expr>,
     },
@@ -171,13 +177,17 @@ pub enum Stmt {
         operator_name: String,
         associativity: Associativity,
         precedence: usize,
-        function_name: LowerName,
+        function_name: QualifiedLowerName,
+    },
+    Type {
+        name: UpperName,
+        constructors: Vec<Type>,
     },
 }
 
 #[derive(Debug)]
 pub struct TypeAnnotation {
-    pub name: String,
+    pub name: LowerName,
     pub type_: Type,
 }
 
@@ -192,7 +202,10 @@ pub enum Type {
     String,
     Unit,
     List(Box<Type>),
-    Function { from: Box<Type>, to: Box<Type> },
+    Function {
+        from: Box<Type>,
+        to: Box<Type>,
+    },
 }
 
 #[derive(Clone, Debug)]
@@ -242,5 +255,5 @@ pub enum Expr {
         function: Rc<Expr>,
         args: Vec<Rc<Expr>>,
     },
-    VarName(LowerName),
+    VarName(QualifiedLowerName),
 }

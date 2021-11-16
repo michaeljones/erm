@@ -18,11 +18,11 @@ pub struct Operator {
     pub operator_name: String,
     pub associativity: Associativity,
     pub precedence: usize,
-    pub function_name: ast::LowerName,
+    pub function_name: ast::QualifiedLowerName,
     pub binding: Binding,
 }
 
-pub type Bindings = HashMap<ast::LowerName, Binding>;
+pub type Bindings = HashMap<ast::QualifiedLowerName, Binding>;
 type Operators = HashMap<String, Operator>;
 
 #[derive(Debug, Clone)]
@@ -32,7 +32,7 @@ pub struct ModuleImport {
 }
 
 impl ModuleImport {
-    pub fn get_binding(&self, target_name: &ast::LowerName) -> Option<Binding> {
+    pub fn get_binding(&self, target_name: &ast::QualifiedLowerName) -> Option<Binding> {
         log::trace!(
             "ModuleImport:get_binding: {:?} from {:?}",
             &target_name,
@@ -93,7 +93,7 @@ pub struct ModuleScope {
 }
 
 impl ModuleScope {
-    pub fn get_binding(&self, target_name: &ast::LowerName) -> Option<Binding> {
+    pub fn get_binding(&self, target_name: &ast::QualifiedLowerName) -> Option<Binding> {
         log::trace!(
             "ModuleScope:get_binding: {:?} from {:?}",
             &target_name,
@@ -211,15 +211,22 @@ impl ModuleScope {
             .statements
             .iter()
             .flat_map(|entry| match &**entry {
-                Stmt::Binding { name, expr, .. } => Some((
-                    ast::LowerName {
+                Stmt::Binding {
+                    name: ast::LowerName(name),
+                    expr,
+                    ..
+                } => Some((
+                    ast::QualifiedLowerName {
                         modules: Vec::new(),
                         access: vec![name.to_string()],
                     },
                     Binding::UserBinding(expr.clone()),
                 )),
-                Stmt::Function { name, .. } => Some((
-                    ast::LowerName {
+                Stmt::Function {
+                    name: ast::LowerName(name),
+                    ..
+                } => Some((
+                    ast::QualifiedLowerName {
                         modules: Vec::new(),
                         access: vec![name.to_string()],
                     },
@@ -286,7 +293,7 @@ impl Environment {
 
 #[derive(Debug)]
 pub enum FoundBinding {
-    BuiltInFunc(ast::LowerName),
+    BuiltInFunc(ast::QualifiedLowerName),
     WithEnv(Binding, Environment),
 }
 
@@ -300,7 +307,7 @@ pub enum GetBindingError {
 */
 pub fn get_binding(
     environment: &Environment,
-    target_name: &ast::LowerName,
+    target_name: &ast::QualifiedLowerName,
 ) -> Result<FoundBinding, GetBindingError> {
     let full_name = target_name.as_string();
     log::trace!("get_binding: {:?}", full_name);
@@ -345,7 +352,7 @@ pub fn get_binding(
     Err(GetBindingError::Unknown)
 }
 
-pub fn get_built_in(target_name: &ast::LowerName) -> Option<Rc<dyn builtins::Func>> {
+pub fn get_built_in(target_name: &ast::QualifiedLowerName) -> Option<Rc<dyn builtins::Func>> {
     let full_name = target_name.as_string();
     match full_name.as_str() {
         // core/Basics

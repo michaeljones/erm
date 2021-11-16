@@ -1,11 +1,14 @@
-use crate::ast::{Expr, LowerName, Pattern};
+use crate::ast;
 
 use std::rc::Rc;
 
 #[derive(Debug, Clone)]
 pub enum Func {
-    UserFunc { args: Vec<Pattern>, expr: Rc<Expr> },
-    BuiltInFunc(LowerName),
+    UserFunc {
+        args: Vec<ast::Pattern>,
+        expr: Rc<ast::Expr>,
+    },
+    BuiltInFunc(ast::QualifiedLowerName),
 }
 
 // TODO: Unsure about making this 'Clone'. Done so that we can have the Value binding without too
