@@ -213,6 +213,10 @@ fn parse_statements(iter: &mut TokenIter) -> Result<Vec<Rc<Stmt>>, Error> {
 
                 statements.push(Rc::new(statement));
             }
+            Some((Token::Type, _range)) => {
+                let statement = parse_type_statement(iter, base, current)?;
+                statements.push(Rc::new(statement));
+            }
             Some((Token::Infix, _range)) => {
                 let statement = parse_infix(iter, base, current)?;
                 statements.push(Rc::new(statement));
@@ -282,6 +286,36 @@ fn extract_precendence(stream_token: &Option<SrcToken>) -> Result<usize, Error> 
     }
 }
 
+fn parse_type_statement(iter: &mut TokenIter, base: usize, current: usize) -> Result<Stmt, Error> {
+    log::trace!("parse_type_statement: {:?}", iter.peek());
+    matches(&iter.next(), Token::Type)?;
+    consume_spaces(iter);
+    let name = extract_upper_name(&iter.next())?;
+    let _indent = indent::consume_to_indented(iter, base, current)?;
+
+    matches(&iter.next(), Token::Equals)?;
+    let _current = indent::must_consume_to_at_least(iter, base, current)?;
+
+    let first_constructor = parse_type(iter, base, current)?;
+    let _current = indent::must_consume_to_at_least(iter, base, current)?;
+
+    let mut constructors = vec![first_constructor];
+
+    loop {
+        if !matches!(iter.peek(), Some((Token::Bar, _range))) {
+            break;
+        }
+        matches(&iter.next(), Token::Bar)?;
+        consume_spaces(iter);
+
+        let constructor = parse_type(iter, base, current)?;
+        constructors.push(constructor);
+        let _current = indent::must_consume_to_at_least(iter, base, current)?;
+    }
+
+    Ok(Stmt::Type { name, constructors })
+}
+
 // Type annotations
 fn parse_type_annotation(
     iter: &mut TokenIter,
@@ -344,7 +378,10 @@ fn parse_single_type(iter: &mut TokenIter, base: usize, current: usize) -> Resul
 
     let mut args = vec![];
     loop {
-        if matches!(iter.peek(), Some((Token::RightArrow, _range))) {
+        if matches!(
+            iter.peek(),
+            Some((Token::RightArrow, _range)) | Some((Token::Bar, _range))
+        ) {
             break;
         }
 
@@ -383,10 +420,7 @@ fn convert_name_to_type(name: QualifiedUpperName, mut args: Vec<Type>) -> Result
                 Err(Error::Unknown)
             }
         }
-        _ => {
-            log::error!("Unknown type name: {:?}", full_name);
-            Err(Error::Unknown)
-        }
+        _ => Ok(Type::UserDefined { name, args }),
     }
 }
 

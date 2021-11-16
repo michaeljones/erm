@@ -206,6 +206,10 @@ pub enum Type {
         from: Box<Type>,
         to: Box<Type>,
     },
+    UserDefined {
+        name: QualifiedUpperName,
+        args: Vec<Type>,
+    },
 }
 
 #[derive(Clone, Debug)]
