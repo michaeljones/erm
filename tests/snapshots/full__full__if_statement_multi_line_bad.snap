@@ -6,9 +6,9 @@ expression: result
 Unexpected indentation.
 
 error: 
-  ┌─ sample:4:2
+  ┌─ sample:4:1
   │
-4 │  5
-  │  ^
+4 │ 5
+  │ ^
 
 

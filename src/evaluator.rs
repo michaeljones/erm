@@ -22,6 +22,7 @@ pub enum Error {
     WrongArity,
     TooManyArguments,
     ScopeError(env::Error),
+    UnsupportedArgumentPattern(String),
 }
 
 pub fn evaluate(
@@ -98,6 +99,7 @@ fn evaluate_expression(expr: &Expr, environment: &env::Environment) -> Result<Va
                     Err(Error::UnknownBinding(name.as_string()))
                 }
             }),
+        Expr::Case { .. } => Err(Error::UnsupportedOperation),
     }
 }
 
@@ -137,6 +139,19 @@ fn evaluate_function_call(
                             Err(Error::TooManyArguments)
                         }
                         Ordering::Equal => {
+                            // Filter the args down to the valid Pattern::Name entries and error if
+                            // we encounter anything else
+                            let filtered_args: Vec<String> = args
+                                .iter()
+                                .map(|pattern| match pattern {
+                                    Pattern::Name(name) => Ok(name.clone()),
+                                    _ => Err(Error::UnsupportedArgumentPattern(format!(
+                                        "{:?}",
+                                        pattern
+                                    ))),
+                                })
+                                .collect::<Result<_, _>>()?;
+
                             // TODO: Don't evaluate in advance here but rather on demand when
                             // used then we don't have to store values in the Scope/Bindings
                             // which is a bit out of place at the moment. Could potentially
@@ -148,10 +163,10 @@ fn evaluate_function_call(
 
                             // Evaluate each argument to the function call and create a map from argument
                             // value to argument name to use as a scope within the function evaluation
-                            let pairs = args
+                            let pairs = filtered_args
                                 .iter()
                                 .zip(values.iter().chain(arg_expr_values.iter()))
-                                .map(|(Pattern::Name(name), value)| {
+                                .map(|(name, value)| {
                                     (
                                         ast::QualifiedLowerName::simple(name.to_string()),
                                         Binding::Value(value.clone()),

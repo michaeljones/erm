@@ -32,7 +32,9 @@ pub fn to_user_output(error: Error) -> String {
 {}"#,
                 pretty_print(source, range)
             ),
-            parser::Error::UnexpectedEnd => format!("Error text not written ({})", line!()),
+            parser::Error::UnexpectedEnd => {
+                format!("Error text not written ({}) {:?}", line!(), error)
+            }
             parser::Error::Indent { range } => format!(
                 r#"Unexpected indentation.
 
@@ -62,6 +64,12 @@ pub fn to_user_output(error: Error) -> String {
             parser::Error::NameMismatch => {
                 format!("Error text not written ({}) {:?}", line!(), error)
             }
+            parser::Error::TokenNotAtLineStart(range) => format!(
+                r#"Token not at line start.
+
+{}"#,
+                pretty_print(source, range)
+            ),
         },
         Error::CheckError(error) => match error {
             checker::Error::UnknownBinding(_) => {
@@ -104,6 +112,9 @@ pub fn to_user_output(error: Error) -> String {
                 format!("Error text not written ({}) {:?}", line!(), error)
             }
             evaluator::Error::UnexpectedBinding(_) => {
+                format!("Error text not written ({}) {:?}", line!(), error)
+            }
+            evaluator::Error::UnsupportedArgumentPattern(_) => {
                 format!("Error text not written ({}) {:?}", line!(), error)
             }
         },

@@ -1,0 +1,14 @@
+---
+source: tests/imports.rs
+expression: result
+
+---
+Token not at line start.
+
+error: 
+  ┌─ sample:2:3
+  │
+2 │   import Impl.Test exposing (hello)
+  │   ^^^^^^
+
+

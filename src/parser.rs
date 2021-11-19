@@ -12,33 +12,33 @@ use super::ast::*;
 use super::lexer::{SrcToken, Token, TokenIter};
 
 pub use self::error::Error;
-use self::mtch::{matches, matches_space};
+use self::mtch::matches;
 
 pub type ParseResult = Result<Module, Error>;
 
-pub fn parse(mut iter: &mut TokenIter) -> ParseResult {
+pub fn parse(iter: &mut TokenIter) -> ParseResult {
     log::trace!("parse");
 
     // Uncomment to print out whole token stream
     // println!("{:?}", iter.collect::<Vec<_>>());
 
+    let base_indent = indent::Indentation::new();
+
     matches(&iter.next(), Token::Module)?;
-    matches_space(&iter.next())?;
+    base_indent.must_consume_to_indented(iter)?;
+
     let name = extract::extract_module_name(&iter.next())?;
+    base_indent.must_consume_to_indented(iter)?;
+
     log::trace!("module {:?}", name);
-    matches_space(&iter.next())?;
-    let exposing = parse_exposing(&mut iter)?;
 
-    // Uncomment to print out whole token stream
-    // println!("{:?}", iter.collect::<Vec<_>>());
-    //
-    whitespace::consume_til_line_start(&mut iter);
+    let exposing = parse_exposing(iter)?;
+    base_indent.must_consume_to_line_start(iter)?;
 
-    let imports = parse_imports(&mut iter)?;
+    let imports = parse_imports(iter)?;
+    base_indent.must_consume_to_line_start(iter)?;
 
-    whitespace::consume_til_line_start(&mut iter);
-
-    let statements = parse_statements(&mut iter)?;
+    let statements = parse_statements(iter)?;
 
     if iter.peek() == None {
         Ok(Module {
@@ -53,17 +53,22 @@ pub fn parse(mut iter: &mut TokenIter) -> ParseResult {
     }
 }
 
-fn parse_exposing(mut iter: &mut TokenIter) -> Result<Exposing, Error> {
+fn parse_exposing(iter: &mut TokenIter) -> Result<Exposing, Error> {
+    // Fresh indentation as exposing lines only need to be indented from zero
+    let base_indent = indent::Indentation::new();
+
     matches(&iter.next(), Token::Exposing)?;
-    matches_space(&iter.next())?;
+    base_indent.must_consume_to_indented(iter)?;
+
     matches(&iter.next(), Token::OpenParen)?;
+    base_indent.must_consume_to_indented(iter)?;
 
     let exposing = match iter.peek() {
         Some((Token::Ellipsis, _range)) => {
             iter.next();
             Ok(Exposing::All)
         }
-        Some(_) => parse_exposing_details(&mut iter).map(Exposing::List),
+        Some(_) => parse_exposing_details(iter).map(Exposing::List),
         token => Err(Error::UnknownExposing(format!("{:?}", token))),
     }?;
 
@@ -73,6 +78,9 @@ fn parse_exposing(mut iter: &mut TokenIter) -> Result<Exposing, Error> {
 }
 
 fn parse_exposing_details(iter: &mut TokenIter) -> Result<Vec<ExposingDetail>, Error> {
+    // Fresh indentation as exposing lines only need to be indented from zero
+    let base_indent = indent::Indentation::new();
+
     let mut details = vec![];
     loop {
         match iter.peek() {
@@ -95,7 +103,7 @@ fn parse_exposing_details(iter: &mut TokenIter) -> Result<Vec<ExposingDetail>, E
         }
 
         matches(&iter.next(), Token::Comma)?;
-        matches_space(&iter.next())?;
+        base_indent.must_consume_to_indented(iter)?;
     }
 
     Ok(details)
@@ -103,6 +111,9 @@ fn parse_exposing_details(iter: &mut TokenIter) -> Result<Vec<ExposingDetail>, E
 
 // Imports
 fn parse_imports(iter: &mut TokenIter) -> Result<Vec<Import>, Error> {
+    // Fresh indentation as import lines only need to be indented from zero
+    let base_indent = indent::Indentation::new();
+
     let mut imports = vec![];
 
     loop {
@@ -111,22 +122,38 @@ fn parse_imports(iter: &mut TokenIter) -> Result<Vec<Import>, Error> {
         }
 
         matches(&iter.next(), Token::Import)?;
-        matches_space(&iter.next())?;
+        base_indent.must_consume_to_indented(iter)?;
+
         let module_name = extract::extract_module_name(&iter.next())?;
 
         let mut exposing = None;
 
-        whitespace::consume_spaces(iter);
-        if matches!(iter.peek(), Some((Token::Exposing, _range))) {
-            exposing = Some(parse_exposing(iter)?);
+        let next_token_indent = base_indent.consume(iter);
+
+        match iter.peek() {
+            Some((Token::Exposing, range)) => {
+                if next_token_indent.at_line_start() {
+                    log::error!("Indentation of exposing");
+                    return Err(Error::Indent {
+                        range: range.clone(),
+                    });
+                }
+
+                exposing = Some(parse_exposing(iter)?);
+                base_indent.must_consume_to_line_start(iter)?;
+            }
+            Some((_, range)) => {
+                if !next_token_indent.at_line_start() {
+                    return Err(Error::TokenNotAtLineStart(range.clone()));
+                }
+            }
+            None => {}
         }
 
         imports.push(Import {
             module_name,
             exposing,
         });
-
-        whitespace::consume_til_line_start(iter);
     }
 
     Ok(imports)
@@ -135,10 +162,15 @@ fn parse_imports(iter: &mut TokenIter) -> Result<Vec<Import>, Error> {
 // Statements
 fn parse_statements(iter: &mut TokenIter) -> Result<Vec<Rc<Stmt>>, Error> {
     log::trace!("parse_statements: {:?}", iter.peek());
+
+    // Fresh indentation as statement lines only need to be indented from zero
+    // Until we're parsing let-in blocks anyway
+    let base_indent = indent::Indentation::new();
+
     let mut statements = vec![];
 
     let base = 0;
-    let mut current = 0;
+    let current = 0;
 
     loop {
         match iter.peek() {
@@ -148,11 +180,11 @@ fn parse_statements(iter: &mut TokenIter) -> Result<Vec<Rc<Stmt>>, Error> {
                 whitespace::consume_spaces(iter);
 
                 let statement = if matches!(iter.peek(), Some((Token::Colon, _range))) {
-                    let type_annotation = parse_type_annotation(iter, base, current, name.clone())?;
-                    current = indent::must_consume_to_matching(iter, base, current)?;
+                    let type_annotation = parse_type_annotation(iter, name.clone())?;
+                    base_indent.must_consume_to_line_start(iter)?;
 
                     let function_name = extract::extract_lower_name(&iter.next())?;
-                    whitespace::consume_spaces(iter);
+                    base_indent.must_consume_to_indented(iter)?;
 
                     if function_name != name {
                         return Err(Error::NameMismatch);
@@ -160,13 +192,12 @@ fn parse_statements(iter: &mut TokenIter) -> Result<Vec<Rc<Stmt>>, Error> {
 
                     parse_function_or_binding(
                         iter,
-                        base,
-                        current,
                         function_name,
                         Some(type_annotation),
+                        &base_indent,
                     )?
                 } else {
-                    parse_function_or_binding(iter, base, current, name, None)?
+                    parse_function_or_binding(iter, name, None, &base_indent)?
                 };
 
                 statements.push(Rc::new(statement));
@@ -245,16 +276,13 @@ fn extract_precendence(stream_token: &Option<SrcToken>) -> Result<usize, Error> 
 }
 
 // Type annotations
-fn parse_type_annotation(
-    iter: &mut TokenIter,
-    base: usize,
-    current: usize,
-    name: LowerName,
-) -> Result<TypeAnnotation, Error> {
+fn parse_type_annotation(iter: &mut TokenIter, name: LowerName) -> Result<TypeAnnotation, Error> {
     log::trace!("parse_type_annotation: {:?}", name);
     matches(&iter.next(), Token::Colon)?;
     whitespace::consume_spaces(iter);
 
+    let base = 0;
+    let current = 0;
     let type_ = types::parse_type(iter, base, current)?;
     whitespace::consume_spaces(iter);
 
@@ -266,12 +294,17 @@ fn parse_type_annotation(
 }
 
 // Functions & bindings
+//
+// Matches:
+//
+//   myFunc argA argB = < expr >
+//          ^^^^^^^^^^^^^^^^^^^^
+//
 fn parse_function_or_binding(
     iter: &mut TokenIter,
-    base: usize,
-    mut current: usize,
     name: LowerName,
     type_annotation: Option<TypeAnnotation>,
+    base_indent: &indent::Indentation,
 ) -> Result<Stmt, Error> {
     log::trace!("parse_function_or_binding: {:?}", name);
     let mut args = Vec::new();
@@ -283,15 +316,14 @@ fn parse_function_or_binding(
         let arg = extract::extract_pattern_name(&iter.next())?;
         args.push(arg);
 
-        whitespace::consume_spaces(iter);
+        base_indent.must_consume_to_indented(iter)?;
     }
 
     matches(&iter.next(), Token::Equals)?;
 
-    let indent = indent::consume_to_indented(iter, base, current)?;
-    current = indent.extract();
+    base_indent.must_consume_to_indented(iter)?;
 
-    let (expr, _curr) = parse_expression(iter, current, current)?;
+    let expr = parse_expression(iter, base_indent)?;
 
     if args.is_empty() {
         Ok(Stmt::Binding {
@@ -313,14 +345,14 @@ fn parse_function_or_binding(
 //
 fn parse_expression(
     mut iter: &mut TokenIter,
-    base: usize,
-    current: usize,
-) -> Result<(Expr, usize), Error> {
+    base_indent: &indent::Indentation,
+) -> Result<Expr, Error> {
     log::trace!("parse_expression: {:?}", iter.peek());
     match iter.peek() {
-        Some((Token::If, _range)) => parse_if_expression(&mut iter, base, current),
+        Some((Token::If, _range)) => parse_if_expression(&mut iter, base_indent),
+        Some((Token::Case, _range)) => parse_case_expression(&mut iter, base_indent),
+        Some(_) => parse_binary_expression(&mut iter, base_indent),
         None => Err(Error::UnexpectedEnd),
-        _ => parse_binary_expression(&mut iter, base, current),
     }
 }
 
@@ -332,44 +364,40 @@ fn parse_expression(
 //
 fn parse_binary_expression(
     mut iter: &mut TokenIter,
-    base: usize,
-    current: usize,
-) -> Result<(Expr, usize), Error> {
+    base_indent: &indent::Indentation,
+) -> Result<Expr, Error> {
     log::trace!("parse_binary_expression: {:?}", iter.peek());
-    let (expr, mut current) = parse_var_or_call(&mut iter, base, current)?;
+    let (expr, next_token_indent) = parse_var_or_call(&mut iter, base_indent)?;
 
     // We have to keep parsing to look for more parts to this expression but if we find a change in
     // indentation that indicates the end of the scope for this expression then we just want to
     // return the expression we've found so far and allow the level up to deal with the change in
     // scope.
-    let indent = indent::consume_to_indented(&mut iter, base, current)?;
-    if indent.in_scope() {
-        current = indent.extract();
-    } else {
-        return Ok((expr, indent.extract()));
+    if !next_token_indent.within(&base_indent) {
+        return Ok(expr);
     }
 
     let mut operator_stack = Vec::new();
     let mut operand_stack = vec![expr];
 
-    while matches!(iter.peek(), Some((Token::Operator(_), _range))) {
+    loop {
+        if !matches!(iter.peek(), Some((Token::Operator(_), _range))) {
+            break;
+        }
+
         let operator = extract::extract_operator(&iter.next())?;
-        current = indent::must_consume_to_indented(&mut iter, base, current)?;
+        base_indent.must_consume_to_indented(iter)?;
 
         process_stacks(operator, &mut operator_stack, &mut operand_stack)?;
 
-        let (right_hand_expr, curr) = parse_var_or_call(&mut iter, base, current)?;
+        let (right_hand_expr, next_token_indent) = parse_var_or_call(&mut iter, base_indent)?;
         operand_stack.push(right_hand_expr);
-        current = curr;
 
         // Similar to above, we consume the expression on the right hand side of the operator and
         // then any whitespace afterwards (to reach the next operator if there is one) but if we
         // find that we're no longer in the indentation scope of the expression then we assume
         // we've reached the end of it and continue with processing what we've got so far
-        let indent = indent::consume_to_indented(&mut iter, base, current)?;
-        if indent.in_scope() {
-            current = indent.extract();
-        } else {
+        if !next_token_indent.within(&base_indent) {
             break;
         }
     }
@@ -387,10 +415,7 @@ fn parse_binary_expression(
     }
 
     assert!(operand_stack.len() == 1);
-    operand_stack
-        .pop()
-        .map(|expr| (expr, current))
-        .ok_or(Error::NoOperand)
+    operand_stack.pop().ok_or(Error::NoOperand)
 }
 
 fn process_stacks(
@@ -451,73 +476,66 @@ fn precedence(operator: &str) -> Result<usize, Error> {
  */
 fn parse_singular_expression(
     iter: &mut TokenIter,
-    base: usize,
-    current: usize,
-) -> Result<(Expr, usize), Error> {
+    base_indent: &indent::Indentation,
+) -> Result<(Expr, indent::Indentation), Error> {
     log::trace!("parse_singular_expression: {:?}", iter.peek());
-    match iter.peek() {
+    let expr = match iter.peek() {
         Some((Token::OpenParen, _range)) => {
             matches(&iter.next(), Token::OpenParen)?;
-            let (expr, current) = parse_expression(iter, base, current)?;
-            let current = indent::must_consume_to_at_least(iter, base, current)?;
+            let expr = parse_expression(iter, base_indent)?;
+            base_indent.must_consume_to_indented(iter)?;
+
             matches(&iter.next(), Token::CloseParen)?;
-            Ok((expr, current))
+
+            Ok(expr)
         }
-        // Some((Token::LowerName(_), _range)) => parse_var_or_call(iter, base, current),
+        Some((Token::OpenBracket, _range)) => parse_list_literal(iter, base_indent),
         None => Err(Error::UnexpectedEnd),
-        _ => parse_contained_expression(iter, base, current),
-    }
+        _ => parse_contained_expression(iter),
+    }?;
+
+    let next_token_indent = base_indent.consume(iter);
+    Ok((expr, next_token_indent))
 }
 
-fn parse_contained_expression(
-    iter: &mut TokenIter,
-    base: usize,
-    current: usize,
-) -> Result<(Expr, usize), Error> {
+fn parse_contained_expression(iter: &mut TokenIter) -> Result<Expr, Error> {
     log::trace!("parse_contained_expression: {:?}", iter.peek());
     match iter.peek() {
         Some((Token::LiteralInteger(int), _range)) => {
-            let result = Ok((Expr::Integer(*int), current));
+            let result = Ok(Expr::Integer(*int));
             iter.next();
             result
         }
         Some((Token::LiteralFloat(float), _range)) => {
-            let result = Ok((Expr::Float(*float), current));
+            let result = Ok(Expr::Float(*float));
             iter.next();
             result
         }
         Some((Token::LiteralString(string), _range)) => {
-            let result = Ok((Expr::String(string.to_string()), current));
+            let result = Ok(Expr::String(string.to_string()));
             iter.next();
             result
         }
         Some((Token::UpperName("True"), _range)) => {
-            let result = Ok((Expr::Bool(true), current));
+            let result = Ok(Expr::Bool(true));
             iter.next();
             result
         }
         Some((Token::UpperName("False"), _range)) => {
-            let result = Ok((Expr::Bool(false), current));
+            let result = Ok(Expr::Bool(false));
             iter.next();
             result
         }
         Some((Token::LowerName(name), _range)) => {
-            let result = Ok((
-                Expr::VarName(QualifiedLowerName::from(name.to_string())),
-                current,
-            ));
+            let result = Ok(Expr::VarName(QualifiedLowerName::from(name.to_string())));
             iter.next();
             result
         }
         Some((Token::LowerPath(name), _range)) => {
-            let result = Ok((
-                Expr::VarName(QualifiedLowerName::from(name.to_string())),
-                current,
-            ));
+            let result = Ok(Expr::VarName(QualifiedLowerName::from(name.to_string())));
             iter.next();
             result
         }
-        Some((Token::OpenBracket, _range)) => parse_list_literal(iter, base, current),
         Some((token, range)) => {
             log::error!("UnexpectedToken");
             Err(Error::UnexpectedToken {
@@ -533,24 +551,24 @@ fn parse_contained_expression(
 /* Parse the contents between [ and ] */
 fn parse_list_literal(
     iter: &mut TokenIter,
-    base: usize,
-    current: usize,
-) -> Result<(Expr, usize), Error> {
+    base_indent: &indent::Indentation,
+) -> Result<Expr, Error> {
     log::trace!("parse_list_literal: {:?}", iter.peek());
     matches(&iter.next(), Token::OpenBracket)?;
 
     let mut expressions = Vec::new();
 
     loop {
-        whitespace::consume_spaces(iter);
+        base_indent.must_consume_to_indented(iter)?;
+
         if let Some((Token::CloseBracket, _range)) = iter.peek() {
             break;
         }
 
-        let (expr, _current) = parse_expression(iter, base, current)?;
+        let expr = parse_expression(iter, base_indent)?;
         expressions.push(Rc::new(expr));
 
-        whitespace::consume_spaces(iter);
+        base_indent.must_consume_to_indented(iter)?;
 
         match iter.peek() {
             Some((Token::CloseBracket, _range)) => break,
@@ -571,7 +589,7 @@ fn parse_list_literal(
 
     matches(&iter.next(), Token::CloseBracket)?;
 
-    Ok((Expr::List(expressions), current))
+    Ok(Expr::List(expressions))
 }
 
 /* A single value or a call site with some kind of single token or expression that we assume
@@ -579,100 +597,166 @@ fn parse_list_literal(
  */
 fn parse_var_or_call(
     iter: &mut TokenIter,
-    base: usize,
-    mut current: usize,
-) -> Result<(Expr, usize), Error> {
+    base_indent: &indent::Indentation,
+) -> Result<(Expr, indent::Indentation), Error> {
     log::trace!("parse_var_or_call: {:?}", iter.peek());
-    let (var_or_func_expr, curr) = parse_singular_expression(iter, base, current)?;
-    current = curr;
+    let (var_or_func_expr, mut next_token_indent) = parse_singular_expression(iter, base_indent)?;
 
-    // We have to keep parsing to look for more parts to this expression but if we find a change in
-    // indentation that indicates the end of the scope for this expression then we just want to
-    // return the expression we've found so far and allow the level up to deal with the change in
-    // scope.
-    let indent = indent::consume_to_indented(iter, base, current)?;
-    if indent.in_scope() {
-        current = indent.extract();
-    } else {
-        return Ok((var_or_func_expr, indent.extract()));
+    // If the next token is within our base indent then we assume we have more of the expression to
+    // parse but if it is at a shallower indent then we assume it is a separate entity
+    if !next_token_indent.within(&base_indent) {
+        log::trace!("exiting parse_var_or_call: {:?}", iter.peek());
+        return Ok((var_or_func_expr, next_token_indent));
     }
 
     let mut args = Vec::new();
 
-    loop {
+    next_token_indent = loop {
         match iter.peek() {
-            Some((Token::Operator(_), _range))
-            | Some((Token::CloseParen, _range))
-            | Some((Token::CloseBracket, _range))
-            | Some((Token::Comma, _range))
-            | Some((Token::Then, _range))
-            | Some((Token::Else, _range)) => {
+            Some((Token::Operator(_), _))
+            | Some((Token::CloseParen, _))
+            | Some((Token::CloseBracket, _))
+            | Some((Token::Comma, _))
+            | Some((Token::Then, _))
+            | Some((Token::Else, _))
+            | Some((Token::Of, _))
+            | Some((Token::RightArrow, _))
+            | None => {
                 // On certain tokens we know we've finish this 'var or call' and so we can exit and
                 // let the parse_expression code handle it
-                break;
+                break next_token_indent;
             }
             _ => {}
         }
 
-        let (argument_expr, curr) = parse_singular_expression(iter, base, current)?;
-        current = curr;
+        let (argument_expr, next_token_indent) = parse_singular_expression(iter, base_indent)?;
         args.push(Rc::new(argument_expr));
 
         // Similar to above, we consume the expression on the right hand side of the operator and
         // then any whitespace afterwards (to reach the next operator if there is one) but if we
         // find that we're no longer in the indentation scope of the expression then we assume
         // we've reached the end of it and continue with processing what we've got so far
-        let indent = indent::consume_to_indented(iter, base, current)?;
-        if indent.in_scope() {
-            current = indent.extract();
-        } else {
-            break;
+        if !next_token_indent.within(&base_indent) {
+            break next_token_indent;
         }
-    }
+    };
 
     if args.is_empty() {
-        Ok((var_or_func_expr, current))
+        Ok((var_or_func_expr, next_token_indent))
     } else {
         Ok((
             Expr::Call {
                 function: Rc::new(var_or_func_expr),
                 args,
             },
-            current,
+            next_token_indent,
         ))
     }
 }
 
 fn parse_if_expression(
-    mut iter: &mut TokenIter,
-    base: usize,
-    mut current: usize,
-) -> Result<(Expr, usize), Error> {
+    iter: &mut TokenIter,
+    base_indent: &indent::Indentation,
+) -> Result<Expr, Error> {
     log::trace!("parse_if_expression: {:?}", iter.peek());
     matches(&iter.next(), Token::If)?;
-    current = indent::must_consume_to_indented(&mut iter, base, current)?;
-    let (condition, curr) = parse_expression(&mut iter, current, current)?;
-    current = curr;
+    base_indent.must_consume_to_indented(iter)?;
 
-    current = indent::must_consume_to_matching(&mut iter, base, current)?;
+    let condition = parse_expression(iter, base_indent)?;
+    base_indent.must_consume_to_indented(iter)?;
+
     matches(&iter.next(), Token::Then)?;
+    base_indent.must_consume_to_indented(iter)?;
 
-    current = indent::must_consume_to_indented(&mut iter, base, current)?;
-    let (then_branch, curr) = parse_expression(&mut iter, current, current)?;
-    current = curr;
+    let then_branch = parse_expression(iter, base_indent)?;
+    base_indent.must_consume_to_indented(iter)?;
 
-    current = indent::must_consume_to_matching(&mut iter, base, current)?;
     matches(&iter.next(), Token::Else)?;
+    base_indent.must_consume_to_indented(iter)?;
 
-    current = indent::must_consume_to_indented(&mut iter, base, current)?;
-    let (else_branch, current) = parse_expression(&mut iter, current, current)?;
+    let else_branch = parse_expression(iter, base_indent)?;
 
-    Ok((
-        Expr::If {
-            condition: Rc::new(condition),
-            then_branch: Rc::new(then_branch),
-            else_branch: Rc::new(else_branch),
-        },
-        current,
-    ))
+    // TODO: Probably need to return the resulting indent to check in some situation
+    base_indent.consume(iter);
+
+    Ok(Expr::If {
+        condition: Rc::new(condition),
+        then_branch: Rc::new(then_branch),
+        else_branch: Rc::new(else_branch),
+    })
+}
+
+fn parse_case_expression(
+    iter: &mut TokenIter,
+    base_indent: &indent::Indentation,
+) -> Result<Expr, Error> {
+    log::trace!("parse_case_expression: {:?}", iter.peek());
+    matches(&iter.next(), Token::Case)?;
+    base_indent.must_consume_to_indented(iter)?;
+
+    let expr = parse_expression(iter, base_indent)?;
+    base_indent.must_consume_to_indented(iter)?;
+
+    matches(&iter.next(), Token::Of)?;
+    let branch_indent = base_indent.must_consume_to_indented(iter)?;
+
+    let mut branches = vec![];
+
+    loop {
+        match iter.peek() {
+            None => {
+                // If there are no more tokens then we've finished parsing the possible cases
+                break;
+            }
+            _ => {}
+        }
+
+        let pattern = parse_pattern(iter)?;
+        branch_indent.must_consume_to_indented(iter)?;
+
+        matches(&iter.next(), Token::RightArrow)?;
+        branch_indent.must_consume_to_indented(iter)?;
+
+        let expr = parse_expression(iter, &branch_indent)?;
+        branches.push((pattern, expr));
+
+        let indent = branch_indent.consume(iter);
+        if indent.matches(&branch_indent) {
+            continue;
+        } else {
+            break;
+        }
+    }
+
+    Ok(Expr::Case {
+        expr: Rc::new(expr),
+        branches: vec![],
+    })
+}
+
+fn parse_pattern(iter: &mut TokenIter) -> Result<Pattern, Error> {
+    match iter.peek() {
+        Some((Token::UpperName("True"), _range)) => {
+            let result = Ok(Pattern::Bool(true));
+            iter.next();
+            result
+        }
+        Some((Token::UpperName("False"), _range)) => {
+            let result = Ok(Pattern::Bool(false));
+            iter.next();
+            result
+        }
+        Some((token, range)) => {
+            log::error!("UnexpectedToken");
+            Err(Error::UnexpectedToken {
+                found: token.to_string(),
+                expected: "Expression token".to_string(),
+                range: range.clone(),
+            })
+        }
+        None => {
+            log::error!("UnexpectedEnd");
+            Err(Error::UnexpectedEnd)
+        }
+    }
 }
