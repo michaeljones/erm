@@ -1,32 +1,18 @@
+mod error;
+mod extract;
 mod indent;
+mod mtch;
+mod types;
+mod whitespace;
 
 use std::convert::TryFrom;
 use std::rc::Rc;
 
 use super::ast::*;
-use super::lexer::{Range, SrcToken, Token, TokenIter};
+use super::lexer::{SrcToken, Token, TokenIter};
 
-#[derive(Debug, PartialEq)]
-pub enum Error {
-    UnexpectedToken {
-        expected: String,
-        found: String,
-        range: Range,
-    },
-    UnexpectedEnd,
-    Indent {
-        range: Range,
-    },
-    TokensRemaining(Vec<String>),
-    NoOperand,
-    NoOperator,
-    EmptyOperatorStack,
-    UnknownOperator(String),
-    UnknownExposing(String),
-    NegativePrecendence,
-    NameMismatch,
-    Unknown,
-}
+pub use self::error::Error;
+use self::mtch::{matches, matches_space};
 
 pub type ParseResult = Result<Module, Error>;
 
@@ -38,7 +24,7 @@ pub fn parse(mut iter: &mut TokenIter) -> ParseResult {
 
     matches(&iter.next(), Token::Module)?;
     matches_space(&iter.next())?;
-    let name = extract_module_name(&iter.next())?;
+    let name = extract::extract_module_name(&iter.next())?;
     log::trace!("module {:?}", name);
     matches_space(&iter.next())?;
     let exposing = parse_exposing(&mut iter)?;
@@ -46,11 +32,11 @@ pub fn parse(mut iter: &mut TokenIter) -> ParseResult {
     // Uncomment to print out whole token stream
     // println!("{:?}", iter.collect::<Vec<_>>());
     //
-    consume_til_line_start(&mut iter);
+    whitespace::consume_til_line_start(&mut iter);
 
     let imports = parse_imports(&mut iter)?;
 
-    consume_til_line_start(&mut iter);
+    whitespace::consume_til_line_start(&mut iter);
 
     let statements = parse_statements(&mut iter)?;
 
@@ -92,7 +78,7 @@ fn parse_exposing_details(iter: &mut TokenIter) -> Result<Vec<ExposingDetail>, E
         match iter.peek() {
             Some((Token::OpenParen, _range)) => {
                 iter.next();
-                let operator_name = extract_operator(&iter.next())?;
+                let operator_name = extract::extract_operator(&iter.next())?;
                 matches(&iter.next(), Token::CloseParen)?;
                 details.push(ExposingDetail::Operator(operator_name.to_string()))
             }
@@ -115,34 +101,6 @@ fn parse_exposing_details(iter: &mut TokenIter) -> Result<Vec<ExposingDetail>, E
     Ok(details)
 }
 
-fn consume_til_line_start(mut iter: &mut TokenIter) {
-    while let Some((token, _range)) = iter.peek() {
-        match token {
-            Token::NewLine => {
-                iter.next();
-                consume_spaces(&mut iter);
-            }
-            _ => return,
-        }
-    }
-}
-
-// Consumes space and comments
-fn consume_spaces(iter: &mut TokenIter) {
-    loop {
-        match iter.peek() {
-            Some((Token::Space(_), _range))
-            | Some((Token::SingleLineComment(_), _range))
-            | Some((Token::MultiLineComment(_), _range)) => {
-                iter.next();
-            }
-            _ => {
-                break;
-            }
-        }
-    }
-}
-
 // Imports
 fn parse_imports(iter: &mut TokenIter) -> Result<Vec<Import>, Error> {
     let mut imports = vec![];
@@ -154,11 +112,11 @@ fn parse_imports(iter: &mut TokenIter) -> Result<Vec<Import>, Error> {
 
         matches(&iter.next(), Token::Import)?;
         matches_space(&iter.next())?;
-        let module_name = extract_module_name(&iter.next())?;
+        let module_name = extract::extract_module_name(&iter.next())?;
 
         let mut exposing = None;
 
-        consume_spaces(iter);
+        whitespace::consume_spaces(iter);
         if matches!(iter.peek(), Some((Token::Exposing, _range))) {
             exposing = Some(parse_exposing(iter)?);
         }
@@ -168,7 +126,7 @@ fn parse_imports(iter: &mut TokenIter) -> Result<Vec<Import>, Error> {
             exposing,
         });
 
-        consume_til_line_start(iter);
+        whitespace::consume_til_line_start(iter);
     }
 
     Ok(imports)
@@ -186,15 +144,15 @@ fn parse_statements(iter: &mut TokenIter) -> Result<Vec<Rc<Stmt>>, Error> {
         match iter.peek() {
             Some((Token::LowerName(_), _range)) => {
                 // Get the name
-                let name = extract_lower_name(&iter.next())?;
-                consume_spaces(iter);
+                let name = extract::extract_lower_name(&iter.next())?;
+                whitespace::consume_spaces(iter);
 
                 let statement = if matches!(iter.peek(), Some((Token::Colon, _range))) {
                     let type_annotation = parse_type_annotation(iter, base, current, name.clone())?;
                     current = indent::must_consume_to_matching(iter, base, current)?;
 
-                    let function_name = extract_lower_name(&iter.next())?;
-                    consume_spaces(iter);
+                    let function_name = extract::extract_lower_name(&iter.next())?;
+                    whitespace::consume_spaces(iter);
 
                     if function_name != name {
                         return Err(Error::NameMismatch);
@@ -243,23 +201,23 @@ fn parse_statements(iter: &mut TokenIter) -> Result<Vec<Rc<Stmt>>, Error> {
 fn parse_infix(iter: &mut TokenIter, _base: usize, mut _current: usize) -> Result<Stmt, Error> {
     log::trace!("parse_infix: {:?}", iter.peek());
     matches(&iter.next(), Token::Infix)?;
-    consume_spaces(iter);
+    whitespace::consume_spaces(iter);
 
-    let associativity = extract_associativity(&iter.next())?;
-    consume_spaces(iter);
+    let associativity = extract::extract_associativity(&iter.next())?;
+    whitespace::consume_spaces(iter);
 
     let precedence = extract_precendence(&iter.next())?;
-    consume_spaces(iter);
+    whitespace::consume_spaces(iter);
 
     matches(&iter.next(), Token::OpenParen)?;
-    let operator_name = extract_operator(&iter.next())?;
+    let operator_name = extract::extract_operator(&iter.next())?;
     matches(&iter.next(), Token::CloseParen)?;
-    consume_spaces(iter);
+    whitespace::consume_spaces(iter);
 
     matches(&iter.next(), Token::Equals)?;
-    consume_spaces(iter);
+    whitespace::consume_spaces(iter);
 
-    let function_name = extract_qualified_lower_name(&iter.next())?;
+    let function_name = extract::extract_qualified_lower_name(&iter.next())?;
 
     Ok(Stmt::Infix {
         operator_name: operator_name.to_string(),
@@ -289,14 +247,14 @@ fn extract_precendence(stream_token: &Option<SrcToken>) -> Result<usize, Error> 
 fn parse_type_statement(iter: &mut TokenIter, base: usize, current: usize) -> Result<Stmt, Error> {
     log::trace!("parse_type_statement: {:?}", iter.peek());
     matches(&iter.next(), Token::Type)?;
-    consume_spaces(iter);
-    let name = extract_upper_name(&iter.next())?;
+    whitespace::consume_spaces(iter);
+    let name = extract::extract_upper_name(&iter.next())?;
     let _indent = indent::consume_to_indented(iter, base, current)?;
 
     matches(&iter.next(), Token::Equals)?;
     let _current = indent::must_consume_to_at_least(iter, base, current)?;
 
-    let first_constructor = parse_type(iter, base, current)?;
+    let first_constructor = types::parse_type(iter, base, current)?;
     let _current = indent::must_consume_to_at_least(iter, base, current)?;
 
     let mut constructors = vec![first_constructor];
@@ -306,9 +264,9 @@ fn parse_type_statement(iter: &mut TokenIter, base: usize, current: usize) -> Re
             break;
         }
         matches(&iter.next(), Token::Bar)?;
-        consume_spaces(iter);
+        whitespace::consume_spaces(iter);
 
-        let constructor = parse_type(iter, base, current)?;
+        let constructor = types::parse_type(iter, base, current)?;
         constructors.push(constructor);
         let _current = indent::must_consume_to_at_least(iter, base, current)?;
     }
@@ -325,103 +283,16 @@ fn parse_type_annotation(
 ) -> Result<TypeAnnotation, Error> {
     log::trace!("parse_type_annotation: {:?}", name);
     matches(&iter.next(), Token::Colon)?;
-    consume_spaces(iter);
+    whitespace::consume_spaces(iter);
 
-    let type_ = parse_type(iter, base, current)?;
-    consume_spaces(iter);
+    let type_ = types::parse_type(iter, base, current)?;
+    whitespace::consume_spaces(iter);
 
     Ok(TypeAnnotation {
         // TODO: Don't use lower name for this stuff
         name,
         type_,
     })
-}
-
-fn parse_type(iter: &mut TokenIter, base: usize, current: usize) -> Result<Type, Error> {
-    log::trace!("parse_type: {:?}", iter.peek());
-    match iter.peek() {
-        Some((Token::UpperName(_), _range)) => {
-            let mut type_ = parse_single_type(iter, base, current)?;
-            consume_spaces(iter);
-
-            loop {
-                if !matches!(iter.peek(), Some((Token::RightArrow, _range))) {
-                    break;
-                }
-                matches(&iter.next(), Token::RightArrow)?;
-                consume_spaces(iter);
-
-                let next_type = parse_single_type(iter, base, current)?;
-                consume_spaces(iter);
-                type_ = Type::Function {
-                    from: Box::new(type_),
-                    to: Box::new(next_type),
-                }
-            }
-
-            Ok(type_)
-        }
-        _ => Err(Error::Unknown),
-    }
-}
-
-// Parse up to the next "->" (RightArrow)
-fn parse_single_type(iter: &mut TokenIter, base: usize, current: usize) -> Result<Type, Error> {
-    log::trace!("parse_single_type: {:?}", iter.peek());
-    let name = extract_qualified_upper_name(&iter.next())?;
-    let indent = indent::consume_to_indented(iter, base, current)?;
-    if indent.in_scope() {
-        // current = indent.extract();
-    } else {
-        return convert_name_to_type(name, vec![]);
-    }
-
-    let mut args = vec![];
-    loop {
-        if matches!(
-            iter.peek(),
-            Some((Token::RightArrow, _range)) | Some((Token::Bar, _range))
-        ) {
-            break;
-        }
-
-        let arg_name = extract_qualified_upper_name(&iter.next())?;
-        let arg_type = convert_name_to_type(arg_name, vec![])?;
-        consume_spaces(iter);
-
-        args.push(arg_type);
-    }
-
-    convert_name_to_type(name, args)
-}
-
-fn convert_name_to_type(name: QualifiedUpperName, mut args: Vec<Type>) -> Result<Type, Error> {
-    log::trace!("convert_name_to_type: {:?} {:?}", name, args);
-    let full_name = name.as_string();
-    match full_name.as_str() {
-        "Int" => Ok(Type::Int),
-        "Float" => Ok(Type::Float),
-        "Char" => Ok(Type::Char),
-        "String" => Ok(Type::String),
-        "List" => {
-            if args.len() == 1 {
-                args.pop()
-                    .map(|arg| Type::List(Box::new(arg)))
-                    .ok_or_else(|| {
-                        log::error!(
-                            "Failed to pop from array with one entry: {:?} {:?}",
-                            name,
-                            args
-                        );
-                        Error::Unknown
-                    })
-            } else {
-                log::error!("List with too many or too few args: {:?} {:?}", name, args);
-                Err(Error::Unknown)
-            }
-        }
-        _ => Ok(Type::UserDefined { name, args }),
-    }
 }
 
 // Functions & bindings
@@ -439,10 +310,10 @@ fn parse_function_or_binding(
             break;
         }
 
-        let arg = extract_pattern_name(&iter.next())?;
+        let arg = extract::extract_pattern_name(&iter.next())?;
         args.push(arg);
 
-        consume_spaces(iter);
+        whitespace::consume_spaces(iter);
     }
 
     matches(&iter.next(), Token::Equals)?;
@@ -512,7 +383,7 @@ fn parse_binary_expression(
     let mut operand_stack = vec![expr];
 
     while matches!(iter.peek(), Some((Token::Operator(_), _range))) {
-        let operator = extract_operator(&iter.next())?;
+        let operator = extract::extract_operator(&iter.next())?;
         current = indent::must_consume_to_indented(&mut iter, base, current)?;
 
         process_stacks(operator, &mut operator_stack, &mut operand_stack)?;
@@ -701,7 +572,7 @@ fn parse_list_literal(
     let mut expressions = Vec::new();
 
     loop {
-        consume_spaces(iter);
+        whitespace::consume_spaces(iter);
         if let Some((Token::CloseBracket, _range)) = iter.peek() {
             break;
         }
@@ -709,7 +580,7 @@ fn parse_list_literal(
         let (expr, _current) = parse_expression(iter, base, current)?;
         expressions.push(Rc::new(expr));
 
-        consume_spaces(iter);
+        whitespace::consume_spaces(iter);
 
         match iter.peek() {
             Some((Token::CloseBracket, _range)) => break,
@@ -834,188 +705,4 @@ fn parse_if_expression(
         },
         current,
     ))
-}
-
-fn matches<'a>(stream_token: &Option<SrcToken<'a>>, match_token: Token<'a>) -> Result<(), Error> {
-    match stream_token {
-        Some((token, range)) => {
-            if token == &match_token {
-                Ok(())
-            } else {
-                log::error!(
-                    "UnexpectedToken. Expected: {:?} Found: {:?} \n\n {:?}",
-                    match_token,
-                    token,
-                    backtrace::Backtrace::new()
-                );
-                Err(Error::UnexpectedToken {
-                    found: token.to_string(),
-                    expected: match_token.to_string(),
-                    range: range.clone(),
-                })
-            }
-        }
-        None => Err(Error::UnexpectedEnd),
-    }
-}
-
-fn matches_space(stream_token: &Option<SrcToken>) -> Result<(), Error> {
-    match stream_token {
-        Some((Token::Space(_), _range)) => Ok(()),
-        Some((token, range)) => {
-            log::error!("UnexpectedToken");
-            Err(Error::UnexpectedToken {
-                found: token.to_string(),
-                expected: "Space".to_string(),
-                range: range.clone(),
-            })
-        }
-        None => Err(Error::UnexpectedEnd),
-    }
-}
-
-fn extract_module_name(stream_token: &Option<SrcToken>) -> Result<ModuleName, Error> {
-    log::trace!("extract_module_name: {:?}", stream_token);
-    match stream_token {
-        Some((Token::UpperPath(name), _range)) => {
-            Ok(name.split('.').map(|str| str.to_string()).collect())
-        }
-        Some((Token::UpperName(name), _range)) => {
-            Ok(name.split('.').map(|str| str.to_string()).collect())
-        }
-        Some((token, range)) => {
-            log::error!("UnexpectedToken");
-            Err(Error::UnexpectedToken {
-                found: token.to_string(),
-                expected: Token::UpperName("").to_string(),
-                range: range.clone(),
-            })
-        }
-        None => Err(Error::UnexpectedEnd),
-    }
-}
-
-fn extract_qualified_upper_name(
-    stream_token: &Option<SrcToken>,
-) -> Result<QualifiedUpperName, Error> {
-    log::trace!("extract_qualified_upper_name: {:?}", stream_token);
-    match stream_token {
-        Some((Token::UpperPath(name), _range)) => QualifiedUpperName::from(name).ok_or_else(|| {
-            log::error!("Unable to create upper name");
-            Error::Unknown
-        }),
-        Some((Token::UpperName(name), _range)) => QualifiedUpperName::from(name).ok_or_else(|| {
-            log::error!("Unable to create upper name");
-            Error::Unknown
-        }),
-        Some((token, range)) => {
-            log::error!("UnexpectedToken");
-            Err(Error::UnexpectedToken {
-                found: token.to_string(),
-                expected: Token::UpperName("").to_string(),
-                range: range.clone(),
-            })
-        }
-        None => Err(Error::UnexpectedEnd),
-    }
-}
-
-fn extract_upper_name(stream_token: &Option<SrcToken>) -> Result<UpperName, Error> {
-    log::trace!("extract_upper_name: {:?}", stream_token);
-    match stream_token {
-        Some((Token::UpperName(name), _range)) => Ok(UpperName(name.to_string())),
-        Some((token, range)) => {
-            log::error!("UnexpectedToken");
-            Err(Error::UnexpectedToken {
-                found: token.to_string(),
-                expected: Token::UpperName("").to_string(),
-                range: range.clone(),
-            })
-        }
-        None => Err(Error::UnexpectedEnd),
-    }
-}
-
-fn extract_qualified_lower_name(
-    stream_token: &Option<SrcToken>,
-) -> Result<QualifiedLowerName, Error> {
-    log::trace!("extract_qualified_lower_name: {:?}", stream_token);
-    match stream_token {
-        Some((Token::LowerName(name), _range)) => Ok(QualifiedLowerName::from(name.to_string())),
-        Some((token, range)) => {
-            log::error!("UnexpectedToken");
-            Err(Error::UnexpectedToken {
-                found: token.to_string(),
-                expected: Token::LowerName("").to_string(),
-                range: range.clone(),
-            })
-        }
-        None => Err(Error::UnexpectedEnd),
-    }
-}
-
-fn extract_lower_name(stream_token: &Option<SrcToken>) -> Result<LowerName, Error> {
-    log::trace!("extract_lower_name: {:?}", stream_token);
-    match stream_token {
-        Some((Token::LowerName(name), _range)) => Ok(LowerName(name.to_string())),
-        Some((token, range)) => {
-            log::error!("UnexpectedToken");
-            Err(Error::UnexpectedToken {
-                found: token.to_string(),
-                expected: Token::LowerName("").to_string(),
-                range: range.clone(),
-            })
-        }
-        None => Err(Error::UnexpectedEnd),
-    }
-}
-
-fn extract_operator<'a>(stream_token: &Option<SrcToken<'a>>) -> Result<&'a str, Error> {
-    log::trace!("extract_operator: {:?}", stream_token);
-    match stream_token {
-        Some((Token::Operator(op), _range)) => Ok(op),
-        Some((token, range)) => {
-            log::error!("UnexpectedToken");
-            Err(Error::UnexpectedToken {
-                found: token.to_string(),
-                expected: Token::Operator("").to_string(),
-                range: range.clone(),
-            })
-        }
-        None => Err(Error::UnexpectedEnd),
-    }
-}
-
-fn extract_pattern_name(stream_token: &Option<SrcToken>) -> Result<Pattern, Error> {
-    log::trace!("extract_pattern_name: {:?}", stream_token);
-    match stream_token {
-        Some((Token::LowerName(name), _range)) => Ok(Pattern::Name(name.to_string())),
-        Some((token, range)) => {
-            log::error!("UnexpectedToken");
-            Err(Error::UnexpectedToken {
-                found: token.to_string(),
-                expected: Token::LowerName("").to_string(),
-                range: range.clone(),
-            })
-        }
-        None => Err(Error::UnexpectedEnd),
-    }
-}
-
-fn extract_associativity(stream_token: &Option<SrcToken>) -> Result<Associativity, Error> {
-    log::trace!("extract_associativity: {:?}", stream_token);
-    match stream_token {
-        Some((Token::LowerName("left"), _range)) => Ok(Associativity::Left),
-        Some((Token::LowerName("right"), _range)) => Ok(Associativity::Right),
-        Some((Token::LowerName("non"), _range)) => Ok(Associativity::Non),
-        Some((token, range)) => {
-            log::error!("UnexpectedToken");
-            Err(Error::UnexpectedToken {
-                found: token.to_string(),
-                expected: "LowerName with 'left', 'right', or 'non".to_string(),
-                range: range.clone(),
-            })
-        }
-        None => Err(Error::UnexpectedEnd),
-    }
 }
