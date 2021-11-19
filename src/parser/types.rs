@@ -57,9 +57,14 @@ fn parse_single_type(iter: &mut TokenIter, base: usize, current: usize) -> Resul
 
         let arg_name = extract::extract_qualified_upper_name(&iter.next())?;
         let arg_type = convert_name_to_type(arg_name, vec![])?;
-        consume_spaces(iter);
-
         args.push(arg_type);
+
+        let indent = indent::consume_to_indented(iter, base, current)?;
+        if indent.in_scope() {
+            // current = indent.extract();
+        } else {
+            break;
+        }
     }
 
     convert_name_to_type(name, args)

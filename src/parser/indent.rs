@@ -94,6 +94,7 @@ pub fn consume_to_indented(
     base: usize,
     start: usize,
 ) -> Result<IndentScope, Error> {
+    log::trace!("consume_to_indented");
     let mut current = Indent::inherited(start);
 
     while let Some((ref token, _range)) = iter.peek() {
@@ -130,6 +131,7 @@ pub fn must_consume_to_indented(
     base: usize,
     start: usize,
 ) -> Result<usize, Error> {
+    log::trace!("must_consume_to_indented");
     let mut current = Indent::inherited(start);
 
     while let Some((ref token, range)) = iter.peek() {
@@ -164,6 +166,7 @@ pub fn must_consume_to_at_least(
     base: usize,
     start: usize,
 ) -> Result<usize, Error> {
+    log::trace!("must_consume_to_at_least");
     let mut current = Indent::inherited(start);
 
     while let Some((ref token, range)) = iter.peek() {
@@ -198,6 +201,7 @@ pub fn must_consume_to_matching(
     base: usize,
     start: usize,
 ) -> Result<usize, Error> {
+    log::trace!("must_consume_to_matching");
     let mut current = Indent::inherited(start);
 
     while let Some((ref token, range)) = iter.peek() {

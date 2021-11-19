@@ -56,4 +56,21 @@ mod types {
         let result = eval(src, None);
         insta::assert_snapshot!(result);
     }
+
+    #[test]
+    fn custom_type_with_concrete_args() {
+        let src = r#"
+        module Main exposing (..)
+
+        type MyType
+          = MyA Int
+          | MyB String
+
+        main : List String -> String
+        main args =
+          "Hello with type"
+        "#;
+        let result = eval(src, None);
+        insta::assert_snapshot!(result);
+    }
 }
