@@ -41,6 +41,24 @@ mod types {
     }
 
     #[test]
+    fn nested_type() {
+        let src = r#"
+        module Main exposing (..)
+
+        -- Silly type so that we can check parens in types
+        second : List (Maybe Int) -> Int -> Int
+        second x y =
+          y
+
+        main : List String -> String
+        main args =
+          String.fromInt (second 4 5)
+        "#;
+        let result = eval(src, None);
+        insta::assert_snapshot!(result);
+    }
+
+    #[test]
     fn custom_type() {
         let src = r#"
         module Main exposing (..)

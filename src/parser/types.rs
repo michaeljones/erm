@@ -65,17 +65,24 @@ pub fn parse_type(iter: &mut TokenIter, base: usize, current: usize) -> Result<T
             consume_spaces(iter);
 
             loop {
-                if !matches!(iter.peek(), Some((Token::RightArrow, _range))) {
-                    break;
-                }
-                matches(&iter.next(), Token::RightArrow)?;
-                consume_spaces(iter);
+                match iter.peek() {
+                    Some((Token::RightArrow, _range)) => {
+                        matches(&iter.next(), Token::RightArrow)?;
+                        consume_spaces(iter);
 
-                let next_type = parse_single_type(iter, base, current)?;
-                consume_spaces(iter);
-                type_ = Type::Function {
-                    from: Box::new(type_),
-                    to: Box::new(next_type),
+                        let next_type = parse_single_type(iter, base, current)?;
+                        consume_spaces(iter);
+                        type_ = Type::Function {
+                            from: Box::new(type_),
+                            to: Box::new(next_type),
+                        }
+                    }
+                    Some((Token::CloseParen, _range)) => {
+                        break;
+                    }
+                    _ => {
+                        break;
+                    }
                 }
             }
 
@@ -100,7 +107,9 @@ fn parse_single_type(iter: &mut TokenIter, base: usize, current: usize) -> Resul
     loop {
         if matches!(
             iter.peek(),
-            Some((Token::RightArrow, _range)) | Some((Token::Bar, _range))
+            Some((Token::CloseParen, _range))
+                | Some((Token::RightArrow, _range))
+                | Some((Token::Bar, _range))
         ) {
             break;
         }
@@ -114,7 +123,18 @@ fn parse_single_type(iter: &mut TokenIter, base: usize, current: usize) -> Resul
                 let name = extract::extract_lower_name(&iter.next())?;
                 Ok(Type::Var(name))
             }
-            _ => Err(Error::Unknown),
+            Some((Token::OpenParen, _range)) => {
+                matches(&iter.next(), Token::OpenParen)?;
+                let type_ = parse_type(iter, base, current)?;
+                matches(&iter.next(), Token::CloseParen)?;
+                Ok(type_)
+            }
+            Some((token, range)) => Err(Error::UnexpectedToken {
+                expected: "Not sure".to_string(),
+                found: token.to_string(),
+                range: range.clone(),
+            }),
+            None => Err(Error::UnexpectedEnd),
         }?;
 
         args.push(arg_type);
