@@ -73,4 +73,21 @@ mod types {
         let result = eval(src, None);
         insta::assert_snapshot!(result);
     }
+
+    #[test]
+    fn custom_type_with_type_variable() {
+        let src = r#"
+        module Main exposing (..)
+
+        type MyType a
+          = MyA a
+          | MyB String
+
+        main : List String -> String
+        main args =
+          "Hello with type variable"
+        "#;
+        let result = eval(src, None);
+        insta::assert_snapshot!(result);
+    }
 }

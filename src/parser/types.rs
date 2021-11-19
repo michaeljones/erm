@@ -7,6 +7,56 @@ use super::indent;
 use super::mtch::matches;
 use super::whitespace::*;
 
+pub fn parse_type_declaration(
+    iter: &mut TokenIter,
+    base: usize,
+    current: usize,
+) -> Result<Stmt, Error> {
+    log::trace!("parse_type_declaration: {:?}", iter.peek());
+    matches(&iter.next(), Token::Type)?;
+    consume_spaces(iter);
+    let name = extract::extract_upper_name(&iter.next())?;
+    let _indent = indent::consume_to_indented(iter, base, current)?;
+
+    let mut args = vec![];
+
+    loop {
+        if matches!(&iter.peek(), Some((Token::Equals, _range))) {
+            break;
+        };
+
+        let type_variable = extract::extract_lower_name(&iter.next())?;
+        args.push(type_variable);
+        let _indent = indent::consume_to_indented(iter, base, current)?;
+    }
+
+    matches(&iter.next(), Token::Equals)?;
+    let _current = indent::must_consume_to_at_least(iter, base, current)?;
+
+    let first_constructor = parse_type(iter, base, current)?;
+    let _current = indent::must_consume_to_at_least(iter, base, current)?;
+
+    let mut constructors = vec![first_constructor];
+
+    loop {
+        if !matches!(iter.peek(), Some((Token::Bar, _range))) {
+            break;
+        }
+        matches(&iter.next(), Token::Bar)?;
+        consume_spaces(iter);
+
+        let constructor = parse_type(iter, base, current)?;
+        constructors.push(constructor);
+        let _current = indent::must_consume_to_at_least(iter, base, current)?;
+    }
+
+    Ok(Stmt::Type {
+        name,
+        args,
+        constructors,
+    })
+}
+
 pub fn parse_type(iter: &mut TokenIter, base: usize, current: usize) -> Result<Type, Error> {
     log::trace!("parse_type: {:?}", iter.peek());
     match iter.peek() {
@@ -55,8 +105,18 @@ fn parse_single_type(iter: &mut TokenIter, base: usize, current: usize) -> Resul
             break;
         }
 
-        let arg_name = extract::extract_qualified_upper_name(&iter.next())?;
-        let arg_type = convert_name_to_type(arg_name, vec![])?;
+        let arg_type = match iter.peek() {
+            Some((Token::UpperName(_), _range)) => {
+                let name = extract::extract_qualified_upper_name(&iter.next())?;
+                convert_name_to_type(name, vec![])
+            }
+            Some((Token::LowerName(_), _range)) => {
+                let name = extract::extract_lower_name(&iter.next())?;
+                Ok(Type::Var(name))
+            }
+            _ => Err(Error::Unknown),
+        }?;
+
         args.push(arg_type);
 
         let indent = indent::consume_to_indented(iter, base, current)?;

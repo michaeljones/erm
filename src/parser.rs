@@ -172,7 +172,7 @@ fn parse_statements(iter: &mut TokenIter) -> Result<Vec<Rc<Stmt>>, Error> {
                 statements.push(Rc::new(statement));
             }
             Some((Token::Type, _range)) => {
-                let statement = parse_type_statement(iter, base, current)?;
+                let statement = types::parse_type_declaration(iter, base, current)?;
                 statements.push(Rc::new(statement));
             }
             Some((Token::Infix, _range)) => {
@@ -242,36 +242,6 @@ fn extract_precendence(stream_token: &Option<SrcToken>) -> Result<usize, Error> 
         }
         None => Err(Error::UnexpectedEnd),
     }
-}
-
-fn parse_type_statement(iter: &mut TokenIter, base: usize, current: usize) -> Result<Stmt, Error> {
-    log::trace!("parse_type_statement: {:?}", iter.peek());
-    matches(&iter.next(), Token::Type)?;
-    whitespace::consume_spaces(iter);
-    let name = extract::extract_upper_name(&iter.next())?;
-    let _indent = indent::consume_to_indented(iter, base, current)?;
-
-    matches(&iter.next(), Token::Equals)?;
-    let _current = indent::must_consume_to_at_least(iter, base, current)?;
-
-    let first_constructor = types::parse_type(iter, base, current)?;
-    let _current = indent::must_consume_to_at_least(iter, base, current)?;
-
-    let mut constructors = vec![first_constructor];
-
-    loop {
-        if !matches!(iter.peek(), Some((Token::Bar, _range))) {
-            break;
-        }
-        matches(&iter.next(), Token::Bar)?;
-        whitespace::consume_spaces(iter);
-
-        let constructor = types::parse_type(iter, base, current)?;
-        constructors.push(constructor);
-        let _current = indent::must_consume_to_at_least(iter, base, current)?;
-    }
-
-    Ok(Stmt::Type { name, constructors })
 }
 
 // Type annotations

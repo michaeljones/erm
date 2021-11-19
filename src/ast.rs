@@ -181,6 +181,7 @@ pub enum Stmt {
     },
     Type {
         name: UpperName,
+        args: Vec<LowerName>,
         constructors: Vec<Type>,
     },
 }
@@ -194,7 +195,7 @@ pub struct TypeAnnotation {
 // Based on: https://github.com/elm-in-elm/compiler/blob/master/src/Elm/Data/Type.elm
 #[derive(Debug)]
 pub enum Type {
-    Var(String),
+    Var(LowerName),
     Bool,
     Int,
     Float,

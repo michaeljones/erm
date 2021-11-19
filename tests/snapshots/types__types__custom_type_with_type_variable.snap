@@ -1,0 +1,6 @@
+---
+source: tests/types.rs
+expression: result
+
+---
+Hello with type variable
