@@ -23,6 +23,7 @@ pub enum Error {
     TooManyArguments,
     ScopeError(env::Error),
     UnsupportedArgumentPattern(String),
+    NoMatchingCase,
 }
 
 pub fn evaluate(
@@ -64,6 +65,7 @@ fn evaluate_expression(expr: &Expr, environment: &env::Environment) -> Result<Va
             then_branch,
             else_branch,
         } => evaluate_if_expression(condition, then_branch, else_branch, environment),
+        Expr::Case { expr, branches } => evaluate_case_expression(expr, branches, environment),
         Expr::List(items) => {
             let value_items = items
                 .iter()
@@ -99,7 +101,6 @@ fn evaluate_expression(expr: &Expr, environment: &env::Environment) -> Result<Va
                     Err(Error::UnknownBinding(name.as_string()))
                 }
             }),
-        Expr::Case { .. } => Err(Error::UnsupportedOperation),
     }
 }
 
@@ -317,5 +318,30 @@ fn evaluate_if_expression(
         Value::Bool(true) => evaluate_expression(then_branch, environment),
         Value::Bool(false) => evaluate_expression(else_branch, environment),
         _ => Err(Error::UnsupportedOperation),
+    }
+}
+
+fn evaluate_case_expression(
+    expr: &Expr,
+    branches: &[(Pattern, Expr)],
+    environment: &env::Environment,
+) -> Result<Value, Error> {
+    log::trace!("evaluate_case_expression");
+    let expr_value = evaluate_expression(expr, environment)?;
+
+    for (pattern, branch_expr) in branches {
+        if pattern_matches_values(&pattern, &expr_value) {
+            return evaluate_expression(branch_expr, environment);
+        }
+    }
+
+    log::error!("No matching case");
+    Err(Error::NoMatchingCase)
+}
+
+fn pattern_matches_values(pattern: &Pattern, value: &Value) -> bool {
+    match (pattern, value) {
+        (Pattern::Bool(p_bool), Value::Bool(v_bool)) => p_bool == v_bool,
+        _ => false,
     }
 }

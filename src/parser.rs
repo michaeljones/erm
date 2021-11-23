@@ -323,7 +323,7 @@ fn parse_function_or_binding(
 
     base_indent.must_consume_to_indented(iter)?;
 
-    let expr = parse_expression(iter, base_indent)?;
+    let (expr, _) = parse_expression(iter, base_indent)?;
 
     if args.is_empty() {
         Ok(Stmt::Binding {
@@ -346,7 +346,7 @@ fn parse_function_or_binding(
 fn parse_expression(
     mut iter: &mut TokenIter,
     base_indent: &indent::Indentation,
-) -> Result<Expr, Error> {
+) -> Result<(Expr, indent::Indentation), Error> {
     log::trace!("parse_expression: {:?}", iter.peek());
     match iter.peek() {
         Some((Token::If, _range)) => parse_if_expression(&mut iter, base_indent),
@@ -365,7 +365,7 @@ fn parse_expression(
 fn parse_binary_expression(
     mut iter: &mut TokenIter,
     base_indent: &indent::Indentation,
-) -> Result<Expr, Error> {
+) -> Result<(Expr, indent::Indentation), Error> {
     log::trace!("parse_binary_expression: {:?}", iter.peek());
     let (expr, next_token_indent) = parse_var_or_call(&mut iter, base_indent)?;
 
@@ -374,15 +374,16 @@ fn parse_binary_expression(
     // return the expression we've found so far and allow the level up to deal with the change in
     // scope.
     if !next_token_indent.within(&base_indent) {
-        return Ok(expr);
+        log::trace!("exiting parse_binary_expression: {:?}", iter.peek());
+        return Ok((expr, next_token_indent));
     }
 
     let mut operator_stack = Vec::new();
     let mut operand_stack = vec![expr];
 
-    loop {
+    let next_token_indent = loop {
         if !matches!(iter.peek(), Some((Token::Operator(_), _range))) {
-            break;
+            break next_token_indent;
         }
 
         let operator = extract::extract_operator(&iter.next())?;
@@ -398,9 +399,10 @@ fn parse_binary_expression(
         // find that we're no longer in the indentation scope of the expression then we assume
         // we've reached the end of it and continue with processing what we've got so far
         if !next_token_indent.within(&base_indent) {
-            break;
+            log::trace!("exiting parse_binary_expression: {:?}", iter.peek());
+            break next_token_indent;
         }
-    }
+    };
 
     while !operator_stack.is_empty() {
         let operator = operator_stack.pop().ok_or(Error::NoOperator)?;
@@ -415,7 +417,10 @@ fn parse_binary_expression(
     }
 
     assert!(operand_stack.len() == 1);
-    operand_stack.pop().ok_or(Error::NoOperand)
+    operand_stack
+        .pop()
+        .ok_or(Error::NoOperand)
+        .map(|expr| (expr, next_token_indent))
 }
 
 fn process_stacks(
@@ -482,7 +487,7 @@ fn parse_singular_expression(
     let expr = match iter.peek() {
         Some((Token::OpenParen, _range)) => {
             matches(&iter.next(), Token::OpenParen)?;
-            let expr = parse_expression(iter, base_indent)?;
+            let (expr, _) = parse_expression(iter, base_indent)?;
             base_indent.must_consume_to_indented(iter)?;
 
             matches(&iter.next(), Token::CloseParen)?;
@@ -565,7 +570,7 @@ fn parse_list_literal(
             break;
         }
 
-        let expr = parse_expression(iter, base_indent)?;
+        let (expr, _) = parse_expression(iter, base_indent)?;
         expressions.push(Rc::new(expr));
 
         base_indent.must_consume_to_indented(iter)?;
@@ -657,44 +662,44 @@ fn parse_var_or_call(
 fn parse_if_expression(
     iter: &mut TokenIter,
     base_indent: &indent::Indentation,
-) -> Result<Expr, Error> {
+) -> Result<(Expr, indent::Indentation), Error> {
     log::trace!("parse_if_expression: {:?}", iter.peek());
     matches(&iter.next(), Token::If)?;
     base_indent.must_consume_to_indented(iter)?;
 
-    let condition = parse_expression(iter, base_indent)?;
+    let (condition, _) = parse_expression(iter, base_indent)?;
     base_indent.must_consume_to_indented(iter)?;
 
     matches(&iter.next(), Token::Then)?;
     base_indent.must_consume_to_indented(iter)?;
 
-    let then_branch = parse_expression(iter, base_indent)?;
+    let (then_branch, _) = parse_expression(iter, base_indent)?;
     base_indent.must_consume_to_indented(iter)?;
 
     matches(&iter.next(), Token::Else)?;
     base_indent.must_consume_to_indented(iter)?;
 
-    let else_branch = parse_expression(iter, base_indent)?;
+    let (else_branch, next_token_indent) = parse_expression(iter, base_indent)?;
 
-    // TODO: Probably need to return the resulting indent to check in some situation
-    base_indent.consume(iter);
-
-    Ok(Expr::If {
-        condition: Rc::new(condition),
-        then_branch: Rc::new(then_branch),
-        else_branch: Rc::new(else_branch),
-    })
+    Ok((
+        Expr::If {
+            condition: Rc::new(condition),
+            then_branch: Rc::new(then_branch),
+            else_branch: Rc::new(else_branch),
+        },
+        next_token_indent,
+    ))
 }
 
 fn parse_case_expression(
     iter: &mut TokenIter,
     base_indent: &indent::Indentation,
-) -> Result<Expr, Error> {
+) -> Result<(Expr, indent::Indentation), Error> {
     log::trace!("parse_case_expression: {:?}", iter.peek());
     matches(&iter.next(), Token::Case)?;
     base_indent.must_consume_to_indented(iter)?;
 
-    let expr = parse_expression(iter, base_indent)?;
+    let (expr, _) = parse_expression(iter, base_indent)?;
     base_indent.must_consume_to_indented(iter)?;
 
     matches(&iter.next(), Token::Of)?;
@@ -702,11 +707,11 @@ fn parse_case_expression(
 
     let mut branches = vec![];
 
-    loop {
+    let next_token_indent = loop {
         match iter.peek() {
             None => {
                 // If there are no more tokens then we've finished parsing the possible cases
-                break;
+                break branch_indent;
             }
             _ => {}
         }
@@ -717,21 +722,23 @@ fn parse_case_expression(
         matches(&iter.next(), Token::RightArrow)?;
         branch_indent.must_consume_to_indented(iter)?;
 
-        let expr = parse_expression(iter, &branch_indent)?;
+        let (expr, next_token_indent) = parse_expression(iter, &branch_indent)?;
         branches.push((pattern, expr));
 
-        let indent = branch_indent.consume(iter);
-        if indent.matches(&branch_indent) {
+        if next_token_indent.matches(&branch_indent) {
             continue;
         } else {
-            break;
+            break next_token_indent;
         }
-    }
+    };
 
-    Ok(Expr::Case {
-        expr: Rc::new(expr),
-        branches: vec![],
-    })
+    Ok((
+        Expr::Case {
+            expr: Rc::new(expr),
+            branches,
+        },
+        next_token_indent,
+    ))
 }
 
 fn parse_pattern(iter: &mut TokenIter) -> Result<Pattern, Error> {

@@ -15,11 +15,14 @@ mod case {
         let src = r#"
         module Main exposing (..)
 
+        toText arg =
+          case arg of
+            True -> "Hello"
+            False -> " case statements"
+
         main : List String -> String
         main args =
-          case True of
-            True -> "True"
-            False -> "False"
+            (toText True) ++ (toText False)
         "#;
         let result = eval(src, None);
         insta::assert_snapshot!(result);
