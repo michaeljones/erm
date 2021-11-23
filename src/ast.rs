@@ -51,6 +51,13 @@ impl Import {
                 module_name: vec!["List".to_string()],
                 exposing: None,
             },
+            Import {
+                module_name: vec!["Maybe".to_string()],
+                exposing: Some(Exposing::List(vec![ExposingDetail::Type(
+                    UpperName("Maybe".to_string()),
+                    TypeState::Open,
+                )])),
+            },
         ]
     }
 }
@@ -63,8 +70,15 @@ pub enum Exposing {
 
 #[derive(Debug, Clone)]
 pub enum ExposingDetail {
+    Type(UpperName, TypeState),
     Operator(String),
     Name(String),
+}
+
+#[derive(Debug, Clone)]
+pub enum TypeState {
+    Open,
+    Closed,
 }
 
 #[derive(Debug, PartialEq, Clone)]

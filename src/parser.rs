@@ -94,6 +94,18 @@ fn parse_exposing_details(iter: &mut TokenIter) -> Result<Vec<ExposingDetail>, E
                 details.push(ExposingDetail::Name(name.to_string()));
                 iter.next();
             }
+            Some((Token::UpperName(name), _range)) => {
+                let name = name.to_string();
+                iter.next();
+                let mut type_state = TypeState::Closed;
+                if let Some((Token::OpenParen, _range)) = iter.peek() {
+                    iter.next();
+                    matches(&iter.next(), Token::Ellipsis)?;
+                    matches(&iter.next(), Token::CloseParen)?;
+                    type_state = TypeState::Open;
+                }
+                details.push(ExposingDetail::Type(UpperName(name), type_state));
+            }
             token => return Err(Error::UnknownExposing(format!("{:?}", token))),
         }
 
