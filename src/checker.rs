@@ -4,7 +4,7 @@ pub mod unify;
 use std::rc::Rc;
 
 use self::term::{Term, Value};
-use super::ast::{self, Expr, Module, Stmt};
+use super::ast::{self, Expr, Module, Pattern, Stmt};
 use super::bindings::Binding;
 use super::env::{self, FoundBinding};
 use super::project;
@@ -17,11 +17,14 @@ pub enum Error {
     UnknownFunction(ast::QualifiedLowerName),
     UnknownOperator(String),
     UnknownVarName(String),
+    UnknownPattern(String),
     ArgumentMismatch(u32),
     TooManyArguments,
     Broken(&'static str),
     ScopeError(env::Error),
     ImpossiblyEmptyList,
+    ImpossiblyEmptyCase,
+    Unknown,
 }
 
 pub struct Context {
@@ -189,6 +192,9 @@ fn expression_to_term(
             then_branch,
             else_branch,
         } => if_expression_to_term(condition, then_branch, else_branch, context, environment),
+        Expr::Case { expr, branches } => {
+            case_expression_to_term(expr, branches, context, environment)
+        }
         Expr::List(expressions) => list_to_term(expressions.to_vec(), context, environment),
         _ => Err(Error::UnhandledExpression(format!("{:?}", expr))),
     }
@@ -330,6 +336,39 @@ fn if_expression_to_term(
         Ok(then_branch_term)
     } else {
         Err(Error::Broken("else & then don't match"))
+    }
+}
+
+fn case_expression_to_term(
+    expr: &Expr,
+    branches: &[(Pattern, Expr)],
+    context: &mut Context,
+    environment: &env::Environment,
+) -> Result<Term, Error> {
+    log::trace!("case_expression_to_term");
+    let expr_term = expression_to_term(expr, context, environment)?;
+    let subs = unify::Substitutions::new();
+
+    let mut branch_expr_term = None;
+
+    for (pattern, branch_expr) in branches {
+        let pattern_term = pattern_to_term(pattern, context, environment)?;
+        unify::unify(&expr_term, &pattern_term, &subs).map_err(Error::UnifyError)?;
+
+        branch_expr_term = Some(expression_to_term(branch_expr, context, environment)?);
+    }
+
+    branch_expr_term.ok_or(Error::ImpossiblyEmptyCase)
+}
+
+fn pattern_to_term(
+    pattern: &Pattern,
+    _context: &mut Context,
+    _environment: &env::Environment,
+) -> Result<Term, Error> {
+    match pattern {
+        Pattern::Bool(_) => Ok(Term::Constant(Value::Bool)),
+        _ => Err(Error::UnknownPattern(format!("{:?}", pattern))),
     }
 }
 

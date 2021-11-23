@@ -143,11 +143,13 @@ mod full {
 
     #[test]
     fn if_statement_multi_line_bad() {
+        // From testing elm, it seems like if-statements don't mind a branch having less of an
+        // ident than the if-line provided that it isn't all the way back the level of the parent
         let src = r#"
         module Main exposing (..)
         main args =
           if False then
-         5
+        5
           else
             4
         "#;

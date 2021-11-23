@@ -32,7 +32,9 @@ pub fn to_user_output(error: Error) -> String {
 {}"#,
                 pretty_print(source, range)
             ),
-            parser::Error::UnexpectedEnd => format!("Error text not written ({})", line!()),
+            parser::Error::UnexpectedEnd => {
+                format!("Error text not written ({}) {:?}", line!(), error)
+            }
             parser::Error::Indent { range } => format!(
                 r#"Unexpected indentation.
 
@@ -62,6 +64,12 @@ pub fn to_user_output(error: Error) -> String {
             parser::Error::NameMismatch => {
                 format!("Error text not written ({}) {:?}", line!(), error)
             }
+            parser::Error::TokenNotAtLineStart(range) => format!(
+                r#"Token not at line start.
+
+{}"#,
+                pretty_print(source, range)
+            ),
         },
         Error::CheckError(error) => match error {
             checker::Error::UnknownBinding(_) => {
@@ -76,14 +84,37 @@ pub fn to_user_output(error: Error) -> String {
 {:#?}"#,
                 unify_error
             ),
-            checker::Error::UnknownFunction(_) => format!("Error text not written ({})", line!()),
-            checker::Error::UnknownOperator(_) => format!("Error text not written ({})", line!()),
-            checker::Error::UnknownVarName(_) => format!("Error text not written ({})", line!()),
-            checker::Error::ArgumentMismatch(_) => format!("Error text not written ({})", line!()),
-            checker::Error::TooManyArguments => format!("Error text not written ({})", line!()),
-            checker::Error::Broken(_) => format!("Error text not written ({})", line!()),
-            checker::Error::ScopeError(_) => format!("Error text not written ({})", line!()),
-            checker::Error::ImpossiblyEmptyList => format!("Error text not written ({})", line!()),
+            checker::Error::UnknownFunction(_) => {
+                format!("Error text not written ({}) {:?}", line!(), error)
+            }
+            checker::Error::UnknownOperator(_) => {
+                format!("Error text not written ({}) {:?}", line!(), error)
+            }
+            checker::Error::UnknownVarName(_) => {
+                format!("Error text not written ({}) {:?}", line!(), error)
+            }
+            checker::Error::UnknownPattern(_) => {
+                format!("Error text not written ({}) {:?}", line!(), error)
+            }
+            checker::Error::ArgumentMismatch(_) => {
+                format!("Error text not written ({}) {:?}", line!(), error)
+            }
+            checker::Error::TooManyArguments => {
+                format!("Error text not written ({}) {:?}", line!(), error)
+            }
+            checker::Error::Broken(_) => {
+                format!("Error text not written ({}) {:?}", line!(), error)
+            }
+            checker::Error::ScopeError(_) => {
+                format!("Error text not written ({}) {:?}", line!(), error)
+            }
+            checker::Error::ImpossiblyEmptyList => {
+                format!("Error text not written ({}) {:?}", line!(), error)
+            }
+            checker::Error::ImpossiblyEmptyCase => {
+                format!("Error text not written ({}) {:?}", line!(), error)
+            }
+            checker::Error::Unknown => format!("Error text not written ({}) {:?}", line!(), error),
         },
         Error::EvaluateError(error) => match error {
             evaluator::Error::UnsupportedOperation => {
@@ -104,6 +135,12 @@ pub fn to_user_output(error: Error) -> String {
                 format!("Error text not written ({}) {:?}", line!(), error)
             }
             evaluator::Error::UnexpectedBinding(_) => {
+                format!("Error text not written ({}) {:?}", line!(), error)
+            }
+            evaluator::Error::UnsupportedArgumentPattern(_) => {
+                format!("Error text not written ({}) {:?}", line!(), error)
+            }
+            evaluator::Error::NoMatchingCase => {
                 format!("Error text not written ({}) {:?}", line!(), error)
             }
         },

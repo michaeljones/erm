@@ -94,4 +94,37 @@ mod imports {
         let result = eval(src, Some(settings));
         insta::assert_snapshot!(result);
     }
+
+    #[test]
+    fn indented_first_import_fails() {
+        let src = r#"
+        module Main exposing (..)
+          import Impl.Test exposing (hello)
+        main args =
+          hello
+        "#;
+        let settings = project::Settings {
+            source_directories: vec![PathBuf::from("tests/modules")],
+        };
+
+        let result = eval(src, Some(settings));
+        insta::assert_snapshot!(result);
+    }
+
+    #[test]
+    fn indented_second_import_fails() {
+        let src = r#"
+        module Main exposing (..)
+        import Impl.Test exposing (hello)
+          import Impl.Test.Other exposing (hello)
+        main args =
+          hello
+        "#;
+        let settings = project::Settings {
+            source_directories: vec![PathBuf::from("tests/modules")],
+        };
+
+        let result = eval(src, Some(settings));
+        insta::assert_snapshot!(result);
+    }
 }

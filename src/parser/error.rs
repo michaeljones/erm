@@ -8,6 +8,7 @@ pub enum Error {
         range: Range,
     },
     UnexpectedEnd,
+    TokenNotAtLineStart(Range),
     Indent {
         range: Range,
     },

@@ -1,0 +1,6 @@
+---
+source: tests/case.rs
+expression: result
+
+---
+Hello case statements

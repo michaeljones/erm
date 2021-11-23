@@ -220,21 +220,26 @@ pub enum Associativity {
     Non,
 }
 
+// Based on: https://github.com/elm-in-elm/compiler/blob/master/src/Elm/AST/Canonical.elm#L97-L111
 #[derive(Debug, Clone)]
 pub enum Pattern {
+    Bool(bool),
     Name(String),
 }
 
 impl Pattern {
+    // TODO: This feels wrong now that we have more than just 'Name'
     pub fn names(&self) -> Vec<String> {
         match self {
             Pattern::Name(name) => vec![name.to_string()],
+            Pattern::Bool(_) => vec![],
         }
     }
 
     pub fn term(&self) -> term::Term {
         match self {
             Pattern::Name(name) => term::Term::Var(name.to_string()),
+            Pattern::Bool(_) => term::Term::Constant(term::Value::Bool),
         }
     }
 }
@@ -255,6 +260,10 @@ pub enum Expr {
         condition: Rc<Expr>,
         then_branch: Rc<Expr>,
         else_branch: Rc<Expr>,
+    },
+    Case {
+        expr: Rc<Expr>,
+        branches: Vec<(Pattern, Expr)>,
     },
     Call {
         function: Rc<Expr>,

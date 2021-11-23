@@ -22,6 +22,8 @@ pub enum Error {
     WrongArity,
     TooManyArguments,
     ScopeError(env::Error),
+    UnsupportedArgumentPattern(String),
+    NoMatchingCase,
 }
 
 pub fn evaluate(
@@ -63,6 +65,7 @@ fn evaluate_expression(expr: &Expr, environment: &env::Environment) -> Result<Va
             then_branch,
             else_branch,
         } => evaluate_if_expression(condition, then_branch, else_branch, environment),
+        Expr::Case { expr, branches } => evaluate_case_expression(expr, branches, environment),
         Expr::List(items) => {
             let value_items = items
                 .iter()
@@ -137,6 +140,19 @@ fn evaluate_function_call(
                             Err(Error::TooManyArguments)
                         }
                         Ordering::Equal => {
+                            // Filter the args down to the valid Pattern::Name entries and error if
+                            // we encounter anything else
+                            let filtered_args: Vec<String> = args
+                                .iter()
+                                .map(|pattern| match pattern {
+                                    Pattern::Name(name) => Ok(name.clone()),
+                                    _ => Err(Error::UnsupportedArgumentPattern(format!(
+                                        "{:?}",
+                                        pattern
+                                    ))),
+                                })
+                                .collect::<Result<_, _>>()?;
+
                             // TODO: Don't evaluate in advance here but rather on demand when
                             // used then we don't have to store values in the Scope/Bindings
                             // which is a bit out of place at the moment. Could potentially
@@ -148,10 +164,10 @@ fn evaluate_function_call(
 
                             // Evaluate each argument to the function call and create a map from argument
                             // value to argument name to use as a scope within the function evaluation
-                            let pairs = args
+                            let pairs = filtered_args
                                 .iter()
                                 .zip(values.iter().chain(arg_expr_values.iter()))
-                                .map(|(Pattern::Name(name), value)| {
+                                .map(|(name, value)| {
                                     (
                                         ast::QualifiedLowerName::simple(name.to_string()),
                                         Binding::Value(value.clone()),
@@ -302,5 +318,30 @@ fn evaluate_if_expression(
         Value::Bool(true) => evaluate_expression(then_branch, environment),
         Value::Bool(false) => evaluate_expression(else_branch, environment),
         _ => Err(Error::UnsupportedOperation),
+    }
+}
+
+fn evaluate_case_expression(
+    expr: &Expr,
+    branches: &[(Pattern, Expr)],
+    environment: &env::Environment,
+) -> Result<Value, Error> {
+    log::trace!("evaluate_case_expression");
+    let expr_value = evaluate_expression(expr, environment)?;
+
+    for (pattern, branch_expr) in branches {
+        if pattern_matches_values(&pattern, &expr_value) {
+            return evaluate_expression(branch_expr, environment);
+        }
+    }
+
+    log::error!("No matching case");
+    Err(Error::NoMatchingCase)
+}
+
+fn pattern_matches_values(pattern: &Pattern, value: &Value) -> bool {
+    match (pattern, value) {
+        (Pattern::Bool(p_bool), Value::Bool(v_bool)) => p_bool == v_bool,
+        _ => false,
     }
 }
