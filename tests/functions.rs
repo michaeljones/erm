@@ -111,4 +111,16 @@ mod functions {
         let result = eval(src, None);
         insta::assert_snapshot!(result);
     }
+
+    #[test]
+    fn underscore_as_argument() {
+        let src = r#"
+        module Main exposing (..)
+        add x y z = x + y + z
+        main args =
+          String.fromInt (add _ 1 2)
+        "#;
+        let result = eval(src, None);
+        insta::assert_snapshot!(result);
+    }
 }

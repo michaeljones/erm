@@ -12,6 +12,9 @@ pub enum Error {
     Indent {
         range: Range,
     },
+    UnderscoreExpression(Range),
+
+    //
     TokensRemaining(Vec<String>),
     NoOperand,
     NoOperator,

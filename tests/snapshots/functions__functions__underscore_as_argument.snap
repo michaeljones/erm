@@ -1,0 +1,14 @@
+---
+source: tests/functions.rs
+expression: result
+
+---
+You cannot use an underscore as a value or expression. You can only assign to it.
+
+error: 
+  ┌─ sample:4:23
+  │
+4 │   String.fromInt (add _ 1 2)
+  │                       ^
+
+

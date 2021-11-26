@@ -41,6 +41,12 @@ pub fn to_user_output(error: Error) -> String {
 {}"#,
                 pretty_print(source, range)
             ),
+            parser::Error::UnderscoreExpression(range) => format!(
+                r#"You cannot use an underscore as a value or expression. You can only assign to it.
+
+{}"#,
+                pretty_print(source, range)
+            ),
             parser::Error::TokensRemaining(_) => {
                 format!("Error text not written ({}) {:?}", line!(), error)
             }

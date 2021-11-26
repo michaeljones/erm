@@ -556,6 +556,7 @@ fn parse_contained_expression(iter: &mut TokenIter) -> Result<Expr, Error> {
             iter.next();
             result
         }
+        Some((Token::Underscore, range)) => Err(Error::UnderscoreExpression(range.clone())),
         Some((token, range)) => {
             log::error!("UnexpectedToken");
             Err(Error::UnexpectedToken {
