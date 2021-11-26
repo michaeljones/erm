@@ -3,7 +3,6 @@ mod extract;
 mod indent;
 mod mtch;
 mod types;
-mod whitespace;
 
 use std::convert::TryFrom;
 use std::rc::Rc;
@@ -181,18 +180,15 @@ fn parse_statements(iter: &mut TokenIter) -> Result<Vec<Rc<Stmt>>, Error> {
 
     let mut statements = vec![];
 
-    let base = 0;
-    let current = 0;
-
     loop {
         match iter.peek() {
             Some((Token::LowerName(_), _range)) => {
                 // Get the name
                 let name = extract::extract_lower_name(&iter.next())?;
-                whitespace::consume_spaces(iter);
+                base_indent.must_consume_to_indented(iter)?;
 
                 let statement = if matches!(iter.peek(), Some((Token::Colon, _range))) {
-                    let type_annotation = parse_type_annotation(iter, name.clone())?;
+                    let type_annotation = parse_type_annotation(iter, name.clone(), &base_indent)?;
                     base_indent.must_consume_to_line_start(iter)?;
 
                     let function_name = extract::extract_lower_name(&iter.next())?;
@@ -215,11 +211,11 @@ fn parse_statements(iter: &mut TokenIter) -> Result<Vec<Rc<Stmt>>, Error> {
                 statements.push(Rc::new(statement));
             }
             Some((Token::Type, _range)) => {
-                let statement = types::parse_type_declaration(iter, base, current)?;
+                let statement = types::parse_type_declaration(iter, &base_indent)?;
                 statements.push(Rc::new(statement));
             }
             Some((Token::Infix, _range)) => {
-                let statement = parse_infix(iter, base, current)?;
+                let statement = parse_infix(iter, &base_indent)?;
                 statements.push(Rc::new(statement));
             }
             Some((token, range)) => {
@@ -233,32 +229,31 @@ fn parse_statements(iter: &mut TokenIter) -> Result<Vec<Rc<Stmt>>, Error> {
             None => break,
         }
 
-        // TODO: Update/fix/change
-        indent::must_consume_to_matching(iter, base, current)?;
+        base_indent.must_consume_to_line_start(iter)?;
     }
 
     Ok(statements)
 }
 
 // Infix operators
-fn parse_infix(iter: &mut TokenIter, _base: usize, mut _current: usize) -> Result<Stmt, Error> {
+fn parse_infix(iter: &mut TokenIter, base_indent: &indent::Indentation) -> Result<Stmt, Error> {
     log::trace!("parse_infix: {:?}", iter.peek());
     matches(&iter.next(), Token::Infix)?;
-    whitespace::consume_spaces(iter);
+    base_indent.must_consume_to_indented(iter)?;
 
     let associativity = extract::extract_associativity(&iter.next())?;
-    whitespace::consume_spaces(iter);
+    base_indent.must_consume_to_indented(iter)?;
 
     let precedence = extract_precendence(&iter.next())?;
-    whitespace::consume_spaces(iter);
+    base_indent.must_consume_to_indented(iter)?;
 
     matches(&iter.next(), Token::OpenParen)?;
     let operator_name = extract::extract_operator(&iter.next())?;
     matches(&iter.next(), Token::CloseParen)?;
-    whitespace::consume_spaces(iter);
+    base_indent.must_consume_to_indented(iter)?;
 
     matches(&iter.next(), Token::Equals)?;
-    whitespace::consume_spaces(iter);
+    base_indent.must_consume_to_indented(iter)?;
 
     let function_name = extract::extract_qualified_lower_name(&iter.next())?;
 
@@ -288,15 +283,17 @@ fn extract_precendence(stream_token: &Option<SrcToken>) -> Result<usize, Error> 
 }
 
 // Type annotations
-fn parse_type_annotation(iter: &mut TokenIter, name: LowerName) -> Result<TypeAnnotation, Error> {
+fn parse_type_annotation(
+    iter: &mut TokenIter,
+    name: LowerName,
+    base_indent: &indent::Indentation,
+) -> Result<TypeAnnotation, Error> {
     log::trace!("parse_type_annotation: {:?}", name);
     matches(&iter.next(), Token::Colon)?;
-    whitespace::consume_spaces(iter);
+    base_indent.must_consume_to_indented(iter)?;
 
-    let base = 0;
-    let current = 0;
-    let type_ = types::parse_type(iter, base, current)?;
-    whitespace::consume_spaces(iter);
+    let type_ = types::parse_type(iter, base_indent)?;
+    base_indent.must_consume_to_indented(iter)?;
 
     Ok(TypeAnnotation {
         // TODO: Don't use lower name for this stuff
@@ -388,7 +385,7 @@ fn parse_binary_expression(
     // indentation that indicates the end of the scope for this expression then we just want to
     // return the expression we've found so far and allow the level up to deal with the change in
     // scope.
-    if !next_token_indent.within(&base_indent) {
+    if !next_token_indent.indented_from(&base_indent) {
         log::trace!("exiting parse_binary_expression: {:?}", iter.peek());
         return Ok((expr, next_token_indent));
     }
@@ -413,7 +410,7 @@ fn parse_binary_expression(
         // then any whitespace afterwards (to reach the next operator if there is one) but if we
         // find that we're no longer in the indentation scope of the expression then we assume
         // we've reached the end of it and continue with processing what we've got so far
-        if !next_token_indent.within(&base_indent) {
+        if !next_token_indent.indented_from(&base_indent) {
             log::trace!("exiting parse_binary_expression: {:?}", iter.peek());
             break next_token_indent;
         }
@@ -625,7 +622,7 @@ fn parse_var_or_call(
 
     // If the next token is within our base indent then we assume we have more of the expression to
     // parse but if it is at a shallower indent then we assume it is a separate entity
-    if !next_token_indent.within(&base_indent) {
+    if !next_token_indent.indented_from(&base_indent) {
         log::trace!("exiting parse_var_or_call: {:?}", iter.peek());
         return Ok((var_or_func_expr, next_token_indent));
     }
@@ -657,7 +654,7 @@ fn parse_var_or_call(
         // then any whitespace afterwards (to reach the next operator if there is one) but if we
         // find that we're no longer in the indentation scope of the expression then we assume
         // we've reached the end of it and continue with processing what we've got so far
-        if !next_token_indent.within(&base_indent) {
+        if !next_token_indent.indented_from(&base_indent) {
             break next_token_indent;
         }
     };

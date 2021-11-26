@@ -5,18 +5,17 @@ use super::error::Error;
 use super::extract;
 use super::indent;
 use super::mtch::matches;
-use super::whitespace::*;
 
 pub fn parse_type_declaration(
     iter: &mut TokenIter,
-    base: usize,
-    current: usize,
+    base_indent: &indent::Indentation,
 ) -> Result<Stmt, Error> {
     log::trace!("parse_type_declaration: {:?}", iter.peek());
     matches(&iter.next(), Token::Type)?;
-    consume_spaces(iter);
+    base_indent.must_consume_to_indented(iter)?;
+
     let name = extract::extract_upper_name(&iter.next())?;
-    let _indent = indent::consume_to_indented(iter, base, current)?;
+    base_indent.must_consume_to_indented(iter)?;
 
     let mut args = vec![];
 
@@ -27,14 +26,14 @@ pub fn parse_type_declaration(
 
         let type_variable = extract::extract_lower_name(&iter.next())?;
         args.push(type_variable);
-        let _indent = indent::consume_to_indented(iter, base, current)?;
+        base_indent.must_consume_to_indented(iter)?;
     }
 
     matches(&iter.next(), Token::Equals)?;
-    let _current = indent::must_consume_to_at_least(iter, base, current)?;
+    base_indent.must_consume_to_indented(iter)?;
 
-    let first_constructor = parse_type(iter, base, current)?;
-    let _current = indent::must_consume_to_at_least(iter, base, current)?;
+    let first_constructor = parse_type(iter, &base_indent)?;
+    base_indent.must_consume_to_indented(iter)?;
 
     let mut constructors = vec![first_constructor];
 
@@ -43,11 +42,11 @@ pub fn parse_type_declaration(
             break;
         }
         matches(&iter.next(), Token::Bar)?;
-        consume_spaces(iter);
+        base_indent.must_consume_to_indented(iter)?;
 
-        let constructor = parse_type(iter, base, current)?;
+        let constructor = parse_type(iter, &base_indent)?;
         constructors.push(constructor);
-        let _current = indent::must_consume_to_at_least(iter, base, current)?;
+        base_indent.must_consume_to_indented(iter)?;
     }
 
     Ok(Stmt::Type {
@@ -57,19 +56,19 @@ pub fn parse_type_declaration(
     })
 }
 
-pub fn parse_type(iter: &mut TokenIter, base: usize, current: usize) -> Result<Type, Error> {
+pub fn parse_type(iter: &mut TokenIter, base_indent: &indent::Indentation) -> Result<Type, Error> {
     log::trace!("parse_type: {:?}", iter.peek());
-    let mut type_ = parse_single_type(iter, base, current)?;
-    consume_spaces(iter);
+    let mut type_ = parse_single_type(iter, &base_indent)?;
+    base_indent.must_consume_to_indented(iter)?;
 
     loop {
         match iter.peek() {
             Some((Token::RightArrow, _range)) => {
                 matches(&iter.next(), Token::RightArrow)?;
-                consume_spaces(iter);
+                base_indent.must_consume_to_indented(iter)?;
 
-                let next_type = parse_single_type(iter, base, current)?;
-                consume_spaces(iter);
+                let next_type = parse_single_type(iter, &base_indent)?;
+                base_indent.must_consume_to_indented(iter)?;
                 type_ = Type::Function {
                     from: Box::new(type_),
                     to: Box::new(next_type),
@@ -88,12 +87,15 @@ pub fn parse_type(iter: &mut TokenIter, base: usize, current: usize) -> Result<T
 }
 
 // Parse up to the next "->" (RightArrow)
-fn parse_single_type(iter: &mut TokenIter, base: usize, current: usize) -> Result<Type, Error> {
+fn parse_single_type(
+    iter: &mut TokenIter,
+    base_indent: &indent::Indentation,
+) -> Result<Type, Error> {
     log::trace!("parse_single_type: {:?}", iter.peek());
 
     match iter.peek() {
-        Some((Token::UpperName(_), _range)) => parse_explicit_type(iter, base, current),
-        Some((Token::UpperPath(_), _range)) => parse_explicit_type(iter, base, current),
+        Some((Token::UpperName(_), _range)) => parse_explicit_type(iter, &base_indent),
+        Some((Token::UpperPath(_), _range)) => parse_explicit_type(iter, &base_indent),
         Some((Token::LowerName(_), _range)) => {
             let name = extract::extract_lower_name(&iter.next())?;
             Ok(Type::Var(name))
@@ -107,11 +109,14 @@ fn parse_single_type(iter: &mut TokenIter, base: usize, current: usize) -> Resul
     }
 }
 
-fn parse_explicit_type(iter: &mut TokenIter, base: usize, current: usize) -> Result<Type, Error> {
+fn parse_explicit_type(
+    iter: &mut TokenIter,
+    base_indent: &indent::Indentation,
+) -> Result<Type, Error> {
     log::trace!("parse_explicit_type: {:?}", iter.peek());
     let name = extract::extract_qualified_upper_name(&iter.next())?;
-    let indent = indent::consume_to_indented(iter, base, current)?;
-    if indent.in_scope() {
+    let indent = base_indent.consume(iter);
+    if indent.indented_from(&base_indent) {
         // current = indent.extract();
     } else {
         return convert_name_to_type(name, vec![]);
@@ -139,7 +144,7 @@ fn parse_explicit_type(iter: &mut TokenIter, base: usize, current: usize) -> Res
             }
             Some((Token::OpenParen, _range)) => {
                 matches(&iter.next(), Token::OpenParen)?;
-                let type_ = parse_type(iter, base, current)?;
+                let type_ = parse_type(iter, &base_indent)?;
                 matches(&iter.next(), Token::CloseParen)?;
                 Ok(type_)
             }
@@ -153,8 +158,8 @@ fn parse_explicit_type(iter: &mut TokenIter, base: usize, current: usize) -> Res
 
         args.push(arg_type);
 
-        let indent = indent::consume_to_indented(iter, base, current)?;
-        if indent.in_scope() {
+        let next_indent = base_indent.consume(iter);
+        if next_indent.indented_from(&base_indent) {
             // current = indent.extract();
         } else {
             break;
