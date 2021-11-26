@@ -11,7 +11,7 @@ mod case {
     use common::eval;
 
     #[test]
-    fn case_statement() {
+    fn boolean_case_statement() {
         let src = r#"
         module Main exposing (..)
 
@@ -19,6 +19,24 @@ mod case {
           case arg of
             True -> "Hello"
             False -> " case statements"
+
+        main : List String -> String
+        main args =
+            (toText True) ++ (toText False)
+        "#;
+        let result = eval(src, None);
+        insta::assert_snapshot!(result);
+    }
+
+    #[test]
+    fn match_any_with_underscore() {
+        let src = r#"
+        module Main exposing (..)
+
+        toText arg =
+          case arg of
+            True -> "Hello"
+            _ -> " case statements with an underscore"
 
         main : List String -> String
         main args =

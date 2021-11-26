@@ -342,6 +342,7 @@ fn evaluate_case_expression(
 fn pattern_matches_values(pattern: &Pattern, value: &Value) -> bool {
     match (pattern, value) {
         (Pattern::Bool(p_bool), Value::Bool(v_bool)) => p_bool == v_bool,
+        (Pattern::Anything, _) => true,
         _ => false,
     }
 }

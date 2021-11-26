@@ -1,7 +1,5 @@
 use std::rc::Rc;
 
-use super::checker::term;
-
 pub type ModuleName = Vec<String>;
 
 #[derive(Debug)]
@@ -237,6 +235,7 @@ pub enum Associativity {
 // Based on: https://github.com/elm-in-elm/compiler/blob/master/src/Elm/AST/Canonical.elm#L97-L111
 #[derive(Debug, Clone)]
 pub enum Pattern {
+    Anything,
     Bool(bool),
     Name(String),
 }
@@ -245,15 +244,9 @@ impl Pattern {
     // TODO: This feels wrong now that we have more than just 'Name'
     pub fn names(&self) -> Vec<String> {
         match self {
+            Pattern::Anything => vec![],
             Pattern::Name(name) => vec![name.to_string()],
             Pattern::Bool(_) => vec![],
-        }
-    }
-
-    pub fn term(&self) -> term::Term {
-        match self {
-            Pattern::Name(name) => term::Term::Var(name.to_string()),
-            Pattern::Bool(_) => term::Term::Constant(term::Value::Bool),
         }
     }
 }

@@ -321,11 +321,14 @@ fn parse_function_or_binding(
     log::trace!("parse_function_or_binding: {:?}", name);
     let mut args = Vec::new();
     loop {
-        if !matches!(iter.peek(), Some((Token::LowerName(_), _range))) {
+        if !matches!(
+            iter.peek(),
+            Some((Token::LowerName(_), _range)) | Some((Token::Underscore, _range))
+        ) {
             break;
         }
 
-        let arg = extract::extract_pattern_name(&iter.next())?;
+        let arg = extract::extract_pattern(&iter.next())?;
         args.push(arg);
 
         base_indent.must_consume_to_indented(iter)?;
@@ -762,6 +765,16 @@ fn parse_pattern(iter: &mut TokenIter) -> Result<Pattern, Error> {
         }
         Some((Token::UpperName("False"), _range)) => {
             let result = Ok(Pattern::Bool(false));
+            iter.next();
+            result
+        }
+        Some((Token::LowerName(name), _range)) => {
+            let result = Ok(Pattern::Name(name.to_string()));
+            iter.next();
+            result
+        }
+        Some((Token::Underscore, _range)) => {
+            let result = Ok(Pattern::Anything);
             iter.next();
             result
         }

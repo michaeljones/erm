@@ -115,10 +115,11 @@ pub fn extract_operator<'a>(stream_token: &Option<SrcToken<'a>>) -> Result<&'a s
     }
 }
 
-pub fn extract_pattern_name(stream_token: &Option<SrcToken>) -> Result<Pattern, Error> {
-    log::trace!("extract_pattern_name: {:?}", stream_token);
+pub fn extract_pattern(stream_token: &Option<SrcToken>) -> Result<Pattern, Error> {
+    log::trace!("extract_pattern: {:?}", stream_token);
     match stream_token {
         Some((Token::LowerName(name), _range)) => Ok(Pattern::Name(name.to_string())),
+        Some((Token::Underscore, _range)) => Ok(Pattern::Anything),
         Some((token, range)) => {
             log::error!("UnexpectedToken");
             Err(Error::UnexpectedToken {

@@ -168,8 +168,10 @@ fn expression_to_term(
 
                         let mut signature_term = body_term;
                         for arg in args.iter().rev() {
-                            signature_term =
-                                Term::Function(Box::new(arg.term()), Box::new(signature_term))
+                            signature_term = Term::Function(
+                                Box::new(pattern_to_term(arg, context, &environment)?),
+                                Box::new(signature_term),
+                            )
                         }
 
                         // log::error!("Error");
@@ -363,12 +365,13 @@ fn case_expression_to_term(
 
 fn pattern_to_term(
     pattern: &Pattern,
-    _context: &mut Context,
+    context: &mut Context,
     _environment: &env::Environment,
 ) -> Result<Term, Error> {
     match pattern {
+        Pattern::Anything => Ok(context.unique_var()),
         Pattern::Bool(_) => Ok(Term::Constant(Value::Bool)),
-        _ => Err(Error::UnknownPattern(format!("{:?}", pattern))),
+        Pattern::Name(name) => Ok(term::Term::Var(name.to_string())),
     }
 }
 

@@ -90,6 +90,9 @@ pub enum Token<'src> {
     #[token("->")]
     RightArrow,
 
+    #[token("_")]
+    Underscore,
+
     // Names
     //
     // Two or more capitalised names separated by dots
