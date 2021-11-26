@@ -47,6 +47,12 @@ pub fn to_user_output(error: Error) -> String {
 {}"#,
                 pretty_print(source, range)
             ),
+            parser::Error::FloatPattern(range) => format!(
+                r#"Floating point values are not allowed in pattern matching.
+
+{}"#,
+                pretty_print(source, range)
+            ),
             parser::Error::TokensRemaining(_) => {
                 format!("Error text not written ({}) {:?}", line!(), error)
             }

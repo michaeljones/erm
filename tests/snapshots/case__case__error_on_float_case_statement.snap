@@ -1,0 +1,14 @@
+---
+source: tests/case.rs
+expression: result
+
+---
+Floating point values are not allowed in pattern matching.
+
+error: 
+  ┌─ sample:5:5
+  │
+5 │     1.1 -> "Hello"
+  │     ^^^
+
+

@@ -48,6 +48,25 @@ mod case {
     }
 
     #[test]
+    fn error_on_float_case_statement() {
+        let src = r#"
+        module Main exposing (..)
+
+        toText arg =
+          case arg of
+            1.1 -> "Hello"
+            2.3 -> " integer"
+            _ -> " case statements"
+
+        main : List String -> String
+        main args =
+            (toText 1.1) ++ (toText 2.3)
+        "#;
+        let result = eval(src, None);
+        insta::assert_snapshot!(result);
+    }
+
+    #[test]
     fn match_any_with_underscore() {
         let src = r#"
         module Main exposing (..)

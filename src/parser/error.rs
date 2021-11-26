@@ -13,6 +13,7 @@ pub enum Error {
         range: Range,
     },
     UnderscoreExpression(Range),
+    FloatPattern(Range),
 
     //
     TokensRemaining(Vec<String>),

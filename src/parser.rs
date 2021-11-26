@@ -784,6 +784,7 @@ fn parse_pattern(iter: &mut TokenIter) -> Result<Pattern, Error> {
             iter.next();
             result
         }
+        Some((Token::LiteralFloat(_), range)) => Err(Error::FloatPattern(range.clone())),
         Some((token, range)) => {
             log::error!("UnexpectedToken");
             Err(Error::UnexpectedToken {
