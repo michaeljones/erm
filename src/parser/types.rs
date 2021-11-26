@@ -59,42 +59,56 @@ pub fn parse_type_declaration(
 
 pub fn parse_type(iter: &mut TokenIter, base: usize, current: usize) -> Result<Type, Error> {
     log::trace!("parse_type: {:?}", iter.peek());
-    match iter.peek() {
-        Some((Token::UpperName(_), _range)) => {
-            let mut type_ = parse_single_type(iter, base, current)?;
-            consume_spaces(iter);
+    let mut type_ = parse_single_type(iter, base, current)?;
+    consume_spaces(iter);
 
-            loop {
-                match iter.peek() {
-                    Some((Token::RightArrow, _range)) => {
-                        matches(&iter.next(), Token::RightArrow)?;
-                        consume_spaces(iter);
+    loop {
+        match iter.peek() {
+            Some((Token::RightArrow, _range)) => {
+                matches(&iter.next(), Token::RightArrow)?;
+                consume_spaces(iter);
 
-                        let next_type = parse_single_type(iter, base, current)?;
-                        consume_spaces(iter);
-                        type_ = Type::Function {
-                            from: Box::new(type_),
-                            to: Box::new(next_type),
-                        }
-                    }
-                    Some((Token::CloseParen, _range)) => {
-                        break;
-                    }
-                    _ => {
-                        break;
-                    }
+                let next_type = parse_single_type(iter, base, current)?;
+                consume_spaces(iter);
+                type_ = Type::Function {
+                    from: Box::new(type_),
+                    to: Box::new(next_type),
                 }
             }
-
-            Ok(type_)
+            Some((Token::CloseParen, _range)) => {
+                break;
+            }
+            _ => {
+                break;
+            }
         }
-        _ => Err(Error::Unknown),
     }
+
+    Ok(type_)
 }
 
 // Parse up to the next "->" (RightArrow)
 fn parse_single_type(iter: &mut TokenIter, base: usize, current: usize) -> Result<Type, Error> {
     log::trace!("parse_single_type: {:?}", iter.peek());
+
+    match iter.peek() {
+        Some((Token::UpperName(_), _range)) => parse_explicit_type(iter, base, current),
+        Some((Token::UpperPath(_), _range)) => parse_explicit_type(iter, base, current),
+        Some((Token::LowerName(_), _range)) => {
+            let name = extract::extract_lower_name(&iter.next())?;
+            Ok(Type::Var(name))
+        }
+        Some((token, range)) => Err(Error::UnexpectedToken {
+            expected: "Not sure".to_string(),
+            found: token.to_string(),
+            range: range.clone(),
+        }),
+        None => Err(Error::UnexpectedEnd),
+    }
+}
+
+fn parse_explicit_type(iter: &mut TokenIter, base: usize, current: usize) -> Result<Type, Error> {
+    log::trace!("parse_explicit_type: {:?}", iter.peek());
     let name = extract::extract_qualified_upper_name(&iter.next())?;
     let indent = indent::consume_to_indented(iter, base, current)?;
     if indent.in_scope() {

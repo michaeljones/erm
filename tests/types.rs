@@ -10,6 +10,7 @@ mod types {
 
     use common::eval;
 
+    // Type Annotations
     #[test]
     fn main_string_type_signature() {
         let src = r#"
@@ -58,6 +59,24 @@ mod types {
         insta::assert_snapshot!(result);
     }
 
+    #[test]
+    fn type_variable_in_type_annotation() {
+        let src = r#"
+        module Main exposing (..)
+
+        second : a -> Int -> Int
+        second _ y =
+          y
+
+        main : List String -> String
+        main args =
+          "Hello with type variable"
+        "#;
+        let result = eval(src, None);
+        insta::assert_snapshot!(result);
+    }
+
+    // Types
     #[test]
     fn custom_type() {
         let src = r#"
