@@ -779,6 +779,11 @@ fn parse_pattern(iter: &mut TokenIter) -> Result<Pattern, Error> {
             iter.next();
             result
         }
+        Some((Token::LiteralInteger(int), _range)) => {
+            let result = Ok(Pattern::Integer(*int));
+            iter.next();
+            result
+        }
         Some((token, range)) => {
             log::error!("UnexpectedToken");
             Err(Error::UnexpectedToken {

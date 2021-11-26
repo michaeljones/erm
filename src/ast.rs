@@ -237,6 +237,7 @@ pub enum Associativity {
 pub enum Pattern {
     Anything,
     Bool(bool),
+    Integer(i32),
     Name(String),
 }
 
@@ -245,8 +246,9 @@ impl Pattern {
     pub fn names(&self) -> Vec<String> {
         match self {
             Pattern::Anything => vec![],
-            Pattern::Name(name) => vec![name.to_string()],
             Pattern::Bool(_) => vec![],
+            Pattern::Integer(_) => vec![],
+            Pattern::Name(name) => vec![name.to_string()],
         }
     }
 }

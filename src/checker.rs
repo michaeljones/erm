@@ -371,6 +371,7 @@ fn pattern_to_term(
     match pattern {
         Pattern::Anything => Ok(context.unique_var()),
         Pattern::Bool(_) => Ok(Term::Constant(Value::Bool)),
+        Pattern::Integer(_) => Ok(Term::Constant(Value::Integer)),
         Pattern::Name(name) => Ok(term::Term::Var(name.to_string())),
     }
 }

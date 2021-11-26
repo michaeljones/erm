@@ -1,0 +1,6 @@
+---
+source: tests/case.rs
+expression: result
+
+---
+Hello integer case statements
