@@ -26,32 +26,22 @@ pub fn to_user_output(error: Error) -> String {
                 expected: _,
                 found: _,
                 range,
-            } => format!(
-                r#"Unexpected token.
-
-{}"#,
-                pretty_print(source, range)
-            ),
+            } => explain_with_source("Unexpected token.", source, range),
             parser::Error::UnexpectedEnd => {
                 format!("Error text not written ({}) {:?}", line!(), error)
             }
-            parser::Error::Indent { range } => format!(
-                r#"Unexpected indentation.
-
-{}"#,
-                pretty_print(source, range)
+            parser::Error::Indent { range } => {
+                explain_with_source("Unexpected indentation.", source, range)
+            }
+            parser::Error::UnderscoreExpression(range) => explain_with_source(
+                "You cannot use an underscore as a value or expression. You can only assign to it.",
+                source,
+                range,
             ),
-            parser::Error::UnderscoreExpression(range) => format!(
-                r#"You cannot use an underscore as a value or expression. You can only assign to it.
-
-{}"#,
-                pretty_print(source, range)
-            ),
-            parser::Error::FloatPattern(range) => format!(
-                r#"Floating point values are not allowed in pattern matching.
-
-{}"#,
-                pretty_print(source, range)
+            parser::Error::FloatPattern(range) => explain_with_source(
+                "Floating point values are not allowed in pattern matching.",
+                source,
+                range,
             ),
             parser::Error::TokensRemaining(_) => {
                 format!("Error text not written ({}) {:?}", line!(), error)
@@ -169,6 +159,16 @@ pub fn to_user_output(error: Error) -> String {
             }
         },
     }
+}
+
+fn explain_with_source(text: &str, source: String, range: Range) -> String {
+    format!(
+        r#"{}
+
+{}"#,
+        text,
+        pretty_print(source, range)
+    )
 }
 
 pub fn pretty_print(source: String, range: Range) -> String {
