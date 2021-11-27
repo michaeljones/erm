@@ -61,7 +61,7 @@ pub fn check(
     let mut context = Context::default();
 
     // let mut var_generator = VarGenerator::new();
-    match env::get_binding(environment, &main_name) {
+    match environment.get_binding(&main_name) {
         Ok(FoundBinding::WithEnv(Binding::UserFunc(stmt_rc), _env)) => match &*stmt_rc {
             Stmt::Function { args, expr, .. } => {
                 let mut bindings = env::Bindings::new();
@@ -131,7 +131,7 @@ fn expression_to_term(
         // Want to be able to fetch 'x' from the scope where 'x' is an typed or untyped
         // argument to the function that we might be in the scope of
         {
-            match env::get_binding(environment, name) {
+            match environment.get_binding(name) {
                 Ok(FoundBinding::BuiltInFunc(name)) => {
                     let built_in_func =
                         env::get_built_in(&name).ok_or(Error::UnknownFunction(name))?;

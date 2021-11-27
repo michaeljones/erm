@@ -289,6 +289,60 @@ impl Environment {
             local_scopes: vector![module_scope.local_scope],
         }
     }
+
+    /* Returns the binding for the target name and the environment in which that binding should be
+      evaluated.
+    */
+    pub fn get_binding(
+        self: &Self,
+        target_name: &ast::QualifiedLowerName,
+    ) -> Result<FoundBinding, GetBindingError> {
+        let full_name = target_name.as_string();
+        log::trace!("get_binding: {:?}", full_name);
+        match full_name.as_str() {
+            // core/Basics
+            "Elm.Kernel.Basics.add" => return Ok(FoundBinding::BuiltInFunc(target_name.clone())),
+            "Elm.Kernel.Basics.sub" => return Ok(FoundBinding::BuiltInFunc(target_name.clone())),
+            "Elm.Kernel.Basics.mul" => return Ok(FoundBinding::BuiltInFunc(target_name.clone())),
+            "Elm.Kernel.Basics.gt" => return Ok(FoundBinding::BuiltInFunc(target_name.clone())),
+            "Elm.Kernel.Basics.lt" => return Ok(FoundBinding::BuiltInFunc(target_name.clone())),
+            "Elm.Kernel.Basics.append" => {
+                return Ok(FoundBinding::BuiltInFunc(target_name.clone()))
+            }
+            // core/String
+            "Elm.Kernel.String.fromInt" => {
+                return Ok(FoundBinding::BuiltInFunc(target_name.clone()))
+            }
+            "Elm.Kernel.String.join" => return Ok(FoundBinding::BuiltInFunc(target_name.clone())),
+            // core/List
+            "Elm.Kernel.List.sum" => return Ok(FoundBinding::BuiltInFunc(target_name.clone())),
+            _ => {}
+        }
+
+        // TODO: Only check local scope if there is not module section to the LowerName
+        for (i, scope) in self.local_scopes.iter().enumerate() {
+            if let Some(value) = scope.bindings.get(target_name) {
+                let env = Environment {
+                    module_imports: self.module_imports.clone(),
+                    local_scopes: self.local_scopes.iter().skip(i).cloned().collect(),
+                };
+                return Ok(FoundBinding::WithEnv(value.clone(), env));
+            }
+        }
+
+        // TODO: Iterate in reverse through imports so later ones override earlier ones?
+        for module_import in &self.module_imports {
+            if let Some(value) = module_import.get_binding(target_name) {
+                let env = Environment {
+                    module_imports: module_import.module_scope.module_imports.clone(),
+                    local_scopes: vector![module_import.module_scope.local_scope.clone()],
+                };
+                return Ok(FoundBinding::WithEnv(value, env));
+            }
+        }
+
+        Err(GetBindingError::Unknown)
+    }
 }
 
 #[derive(Debug)]
@@ -300,56 +354,6 @@ pub enum FoundBinding {
 #[derive(Debug, PartialEq)]
 pub enum GetBindingError {
     Unknown,
-}
-
-/* Returns the binding for the target name and the environment in which that binding should be
-  evaluated.
-*/
-pub fn get_binding(
-    environment: &Environment,
-    target_name: &ast::QualifiedLowerName,
-) -> Result<FoundBinding, GetBindingError> {
-    let full_name = target_name.as_string();
-    log::trace!("get_binding: {:?}", full_name);
-    match full_name.as_str() {
-        // core/Basics
-        "Elm.Kernel.Basics.add" => return Ok(FoundBinding::BuiltInFunc(target_name.clone())),
-        "Elm.Kernel.Basics.sub" => return Ok(FoundBinding::BuiltInFunc(target_name.clone())),
-        "Elm.Kernel.Basics.mul" => return Ok(FoundBinding::BuiltInFunc(target_name.clone())),
-        "Elm.Kernel.Basics.gt" => return Ok(FoundBinding::BuiltInFunc(target_name.clone())),
-        "Elm.Kernel.Basics.lt" => return Ok(FoundBinding::BuiltInFunc(target_name.clone())),
-        "Elm.Kernel.Basics.append" => return Ok(FoundBinding::BuiltInFunc(target_name.clone())),
-        // core/String
-        "Elm.Kernel.String.fromInt" => return Ok(FoundBinding::BuiltInFunc(target_name.clone())),
-        "Elm.Kernel.String.join" => return Ok(FoundBinding::BuiltInFunc(target_name.clone())),
-        // core/List
-        "Elm.Kernel.List.sum" => return Ok(FoundBinding::BuiltInFunc(target_name.clone())),
-        _ => {}
-    }
-
-    // TODO: Only check local scope if there is not module section to the LowerName
-    for (i, scope) in environment.local_scopes.iter().enumerate() {
-        if let Some(value) = scope.bindings.get(target_name) {
-            let env = Environment {
-                module_imports: environment.module_imports.clone(),
-                local_scopes: environment.local_scopes.iter().skip(i).cloned().collect(),
-            };
-            return Ok(FoundBinding::WithEnv(value.clone(), env));
-        }
-    }
-
-    // TODO: Iterate in reverse through imports so later ones override earlier ones?
-    for module_import in &environment.module_imports {
-        if let Some(value) = module_import.get_binding(target_name) {
-            let env = Environment {
-                module_imports: module_import.module_scope.module_imports.clone(),
-                local_scopes: vector![module_import.module_scope.local_scope.clone()],
-            };
-            return Ok(FoundBinding::WithEnv(value, env));
-        }
-    }
-
-    Err(GetBindingError::Unknown)
 }
 
 pub fn get_built_in(target_name: &ast::QualifiedLowerName) -> Option<Rc<dyn builtins::Func>> {

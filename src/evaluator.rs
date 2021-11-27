@@ -74,7 +74,8 @@ fn evaluate_expression(expr: &Expr, environment: &env::Environment) -> Result<Va
             Ok(Value::List(value_items))
         }
         Expr::Call { function, args } => evaluate_function_call(function, args, environment),
-        Expr::VarName(name) => env::get_binding(environment, name)
+        Expr::VarName(name) => environment
+            .get_binding(name)
             .map_err(|_| {
                 log::error!("Error::UnknownBinding {:?}\n\n{:#?}", name, environment);
                 Error::UnknownBinding(name.as_string())
