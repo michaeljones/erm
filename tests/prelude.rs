@@ -1,9 +1,3 @@
-extern crate codespan_reporting;
-extern crate erm;
-extern crate im;
-extern crate logos;
-extern crate unindent;
-
 mod common;
 
 mod prelude {
@@ -12,7 +6,7 @@ mod prelude {
 
     use erm::project;
 
-    use common::eval;
+    use crate::common::eval;
 
     #[test]
     fn use_built_in_string_module() {

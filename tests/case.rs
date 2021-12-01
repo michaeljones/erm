@@ -1,14 +1,8 @@
-extern crate erm;
-extern crate im;
-extern crate insta;
-extern crate logos;
-extern crate unindent;
-
 mod common;
 
 mod case {
 
-    use common::eval;
+    use crate::common::eval;
 
     #[test]
     fn boolean_case_statement() {

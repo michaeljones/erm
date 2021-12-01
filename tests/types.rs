@@ -1,14 +1,8 @@
-extern crate erm;
-extern crate im;
-extern crate insta;
-extern crate logos;
-extern crate unindent;
-
 mod common;
 
 mod types {
 
-    use common::eval;
+    use crate::common::eval;
 
     // Type Annotations
     #[test]

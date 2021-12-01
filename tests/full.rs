@@ -1,15 +1,8 @@
-extern crate codespan_reporting;
-extern crate erm;
-extern crate im;
-extern crate insta;
-extern crate logos;
-extern crate unindent;
-
 mod common;
 
 mod full {
 
-    use common::{eval, eval_with_args};
+    use crate::common::{eval, eval_with_args};
 
     #[test]
     fn basic_string() {

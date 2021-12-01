@@ -2,6 +2,7 @@
 name = "erm"
 version = "0.1.0"
 authors = ["Michael Jones <michael@zaptic.com>"]
+edition = "2021"
 
 [[bin]]
 name = "erm"

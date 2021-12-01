@@ -1,10 +1,3 @@
-extern crate clap;
-extern crate erm;
-extern crate im;
-extern crate logos;
-extern crate regex;
-extern crate walkdir;
-
 use clap::{App, Arg};
 use logos::Logos;
 

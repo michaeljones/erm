@@ -1,9 +1,3 @@
-extern crate codespan_reporting;
-extern crate erm;
-extern crate im;
-extern crate logos;
-extern crate unindent;
-
 mod common;
 
 mod imports {
@@ -12,7 +6,7 @@ mod imports {
 
     use erm::project;
 
-    use common::eval;
+    use crate::common::eval;
 
     #[test]
     fn unable_to_find_import() {

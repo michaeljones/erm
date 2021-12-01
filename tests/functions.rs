@@ -1,14 +1,8 @@
-extern crate codespan_reporting;
-extern crate erm;
-extern crate im;
-extern crate logos;
-extern crate unindent;
-
 mod common;
 
 mod functions {
 
-    use common::eval;
+    use crate::common::eval;
 
     #[test]
     fn function_call_simple() {

@@ -1,5 +1,5 @@
 use super::Error;
-use lexer::{Token, TokenIter};
+use crate::lexer::{Token, TokenIter};
 
 #[derive(Clone)]
 pub struct Indentation {

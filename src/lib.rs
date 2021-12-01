@@ -1,8 +1,3 @@
-extern crate codespan_reporting;
-extern crate im;
-extern crate log;
-extern crate logos;
-
 pub mod ast;
 pub mod bindings;
 pub mod builtins;
